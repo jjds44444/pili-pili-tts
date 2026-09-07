@@ -20,6 +20,12 @@ import time
 HERE = os.path.dirname(os.path.abspath(__file__))
 sys.path.insert(0, HERE)
 
+# Assets are served straight out of this repo, so a plain build produces a save
+# everyone at the table can see. Anything committed to assets/ on main is live
+# at this prefix within seconds of pushing. Use --local for file:/// paths
+# (host-only, but instant - handy while iterating on the art).
+DEFAULT_BASE_URL = "https://raw.githubusercontent.com/jjds44444/pili-pili-tts/main/assets"
+
 import art  # noqa: E402  (lives next to this script)
 
 COLORS = ["Red", "Orange", "Yellow", "Green", "Teal", "Blue", "Purple", "White"]
@@ -391,9 +397,14 @@ def tts_saves_dir():
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", help="write the save + assets here instead of the TTS Saves folder")
-    ap.add_argument("--base-url", help="host images at this URL prefix instead of local files")
+    ap.add_argument("--base-url", default=DEFAULT_BASE_URL,
+                    help="URL prefix the images are served from")
+    ap.add_argument("--local", action="store_true",
+                    help="point at local file:/// copies instead (host sees them, nobody else)")
     ap.add_argument("--skip-art", action="store_true", help="reuse the assets already rendered")
     args = ap.parse_args()
+    if args.local:
+        args.base_url = None
 
     with open(os.path.join(HERE, "missions.json"), encoding="utf-8") as fh:
         missions = json.load(fh)["missions"]
@@ -432,10 +443,14 @@ def main():
 
     path = build(missions, urls, out_dir)
     print("save file:", path)
-    print("images:   ", asset_dir)
-    if not args.base_url:
-        print("\nLocal images only load for the host. For multiplayer, upload the")
-        print("assets folder somewhere public and rerun with --base-url <prefix>.")
+    if args.base_url:
+        print("images:    served from", args.base_url)
+        print("\nEveryone at the table will see the cards. If you changed the art,")
+        print("commit and push assets/ or the others still get the old images.")
+    else:
+        print("images:   ", asset_dir)
+        print("\nLocal images load for you only - everyone else sees blank cards.")
+        print("Drop --local to point at the published assets.")
 
 
 if __name__ == "__main__":

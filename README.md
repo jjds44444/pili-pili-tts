@@ -1,92 +1,82 @@
-# Pili Pili — Tabletop Simulator mod
+# Pili Pili — Tabletop Simulator
 
-An unofficial fan implementation of **Pili Pili** (Ben, Martin & JB / ATM Gaming) for
-Tabletop Simulator, for personal use. Every card is drawn procedurally by `art.py` and
-`glyphs.py` — flat colour bands by value, tribal ink marks inside the numerals,
-scattered glyph fields, hand-cut wobbly edges — styled to match the published cards.
+An unofficial, fan-made Tabletop Simulator implementation of **Pili Pili**, the
+trick-taking card game with variable missions by **Ben, Martin & JB**, published by
+**[ATM Gaming](https://www.atmgaming.com)**.
+
+Not affiliated with or endorsed by ATM Gaming. If you enjoy it, **buy the real game** —
+it's a lovely little box, and this exists because the physical game is good.
+
+![Cards](preview-cards.png)
 
 ## Install
 
 ```bash
+pip install pillow numpy
 python build_save.py
 ```
 
-That renders the card sheets and drops `PiliPili.json` plus a `PiliPili_assets/`
-folder into your Tabletop Simulator **Saves** directory. Launch TTS →
-*Games → Save & Load → Pili Pili*.
+That renders the card art and writes `PiliPili.json` into your Tabletop Simulator
+**Saves** folder. In TTS: **Games → Save & Load → Saves → Pili Pili**.
 
-Needs Python 3, Pillow and numpy (`pip install pillow numpy`). A full art render takes
-about 90 seconds; add `--skip-art` to reuse what's in `assets/`.
+Card images are served from this repo, so everyone at the table sees them — no Steam
+Cloud upload needed. Add `--local` to use local files instead (faster while iterating
+on the art, but only you will see them).
 
-### Playing with other people
-
-Local `file:///` image paths only resolve on the machine hosting the table — everyone
-else sees blank cards. Upload the contents of `PiliPili_assets/` somewhere public
-(Steam Cloud, imgur, a GitHub raw URL) and rebuild pointing at it:
-
-```bash
-python build_save.py --base-url https://example.com/pilipili
-```
-
-Other flags: `--out DIR` to write somewhere else, `--skip-art` to reuse rendered sheets.
-
-## What's on the table
-
-| Object | |
+| Flag | |
 |---|---|
-| Numbered Cards | 55 cards, 1–55, plus the Joker. Colour-graded cool→hot so relative strength reads at a glance. |
-| Missions | 36 cards. The number bottom-left is how many cards to deal each player. |
-| Pilis | Infinite bag of chilli tokens, if you'd rather count penalties physically. |
-| Bet Markers | Optional 0–13 cards, standing in for the rulebook's "Scoville scale" trick of laying out unused number cards. |
+| `--skip-art` | Reuse `assets/`, just rebuild the save. Two seconds instead of two minutes. |
+| `--local` | Local `file:///` images. Host-only. |
+| `--out DIR` | Write somewhere other than the TTS Saves folder. |
+| `--base-url URL` | Serve images from somewhere else entirely. |
 
-Eight seats are set up with hand zones and snap points; the panel only shows rows for
-colours people are actually sitting in.
+## Playing
 
-## The control panel
+Sit down in a player colour — the panel top-right only shows rows for occupied seats.
 
-- **Mission** — discards the current mission, flips the next one, announces its deal count.
-- **Deal** — deals that many cards to every seated player, shuffling first. If there
-  aren't enough cards for the player count it deals the largest even amount it can and says so.
-- **Reveal Bets** — each player sets a hidden bet with their row's `-`/`+` (shows `SET`
-  to everyone else, whispers the value back to you). Reveal shows them all and
-  **enforces the rule that the bets must not total the number of cards dealt** — if
-  they do, it flags that the last bidder has to change.
-- **Pilis** — `-`/`+` per seat. At 6 the game stops and it announces who has fewest.
-- **End Round** — sweeps every numbered card back out of hands and off the table into
-  one reshuffled deck.
-- **New Game** — the same, plus the mission deck, and zeroes all Pilis.
+**Mission** flips the next mission, which sets the round's special rule and how many
+cards to deal. **Deal** deals that many to everyone. Each player sets a hidden bet with
+their row's `-`/`+`, then **Reveal Bets** shows them all — and enforces the rule that
+the bets must not total the number of cards dealt, so there's always at least one loser.
 
-Rules and credits are in the in-game notebook (`Ctrl+N`).
+Play tricks: highest card wins, no suits, the Joker takes any value from 0 to 56.
+Then take 1 Pili for every trick you're away from your bet, using the `-`/`+` or the
+physical chillies. **End Round** sweeps the cards back and reshuffles.
 
-## Editing the missions
+First to **6 Pilis** ends the game, and fewest Pilis wins.
 
-The rulebook (pp. 14–19) prints **17 effect types** but not the parameters of each of
-the 36 physical cards — how many cards each deals, which way the arrows point, how
-many cards get passed, which numbers are cursed. `missions.json` covers all 17 effects
-with a plausible split of those parameters. If you have the physical deck and want it
-exact, edit `missions.json` and rerun `build_save.py`.
+Full rules are in the in-game notebook (`Ctrl+N`).
 
-Each entry:
+## Missions
 
-```json
-{"title": "Pass Left", "text": "AFTER BETTING\nPass 1 card to the player\non your LEFT.", "cards": 5, "expert": false}
-```
+The rulebook prints 17 mission **effect types** but not the parameters of each of the
+36 physical cards — how many cards each deals, which way the arrows point, which
+numbers are cursed. `missions.json` covers all 17 effects with a plausible split of
+those parameters. If you have the physical deck and want it exact, edit that file and
+rebuild.
 
-`cards` prints bottom-left and drives the Deal button. `expert` gives the card the red
-Expert frame. `\n` breaks lines on the card face.
+## Artwork
+
+Every card is drawn from scratch in code — no scans, photos or exports of the published
+game. `glyphs.py` builds tribal glyphs compositionally from silhouettes and ink marks,
+seeded per card, and roughens every contour so nothing reads as machine-drawn; `art.py`
+lays out the cards. Styled after the published design, but not copied from it.
 
 ## Files
 
 | | |
 |---|---|
-| `build_save.py` | Builds the save. Start here. |
-| `art.py` | Draws every card, back, and token. |
+| `build_save.py` | Builds the TTS save. Start here. |
+| `art.py` | Card layout, palette, typography. |
+| `glyphs.py` | Glyph vocabulary and hand-cut edge treatment. |
 | `missions.json` | The 36 mission cards. |
 | `global.lua` | Table script — dealing, betting, Pilis, cleanup. |
 | `validate.py` | `python validate.py PiliPili.json` — structural check before loading. |
+| `preview.py` | Contact sheet of the rendered art. |
 
 ## Credits
 
-Pili Pili is designed by Ben, Martin & JB and published by ATM Gaming
-(<https://www.atmgaming.com>). This mod is unofficial and non-commercial. If you enjoy
-it, buy the real game — it's a lovely little box.
+Pili Pili is designed by **Ben, Martin & JB** and published by
+**[ATM Gaming](https://www.atmgaming.com)**. All game design, rules and mission effects
+are theirs. This repository contains only an independent digital implementation and
+original artwork, shared for personal use.

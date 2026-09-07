@@ -6,5 +6,5 @@ PiliPili.json
 PiliPili_assets/
 out/
 
-# generated contact sheet
+# generated contact sheet (preview-cards.png IS tracked, it's the README image)
 preview.png
