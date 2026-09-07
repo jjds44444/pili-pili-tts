@@ -41,7 +41,7 @@ check("GUIDs unique", len(set(guids)) == len(guids),
       f"{len(guids) - len(set(guids))} duplicates")
 
 zones = [o for o in save["ObjectStates"] if o["Name"] == "HandTrigger"]
-check("8 hand zones", len(zones) == 8)
+check(f"{len(zones)} hand zones present", len(zones) >= 2)
 check("hand zones have distinct colours", len({z["FogColor"] for z in zones}) == len(zones))
 
 print("\ndecks")
@@ -176,9 +176,10 @@ for c in miss["ContainedObjects"]:
     m = re.search(r"\[deal (\d+)\]", c["Description"])
     counts.append(int(m.group(1)) if m else None)
 check("every mission prints a deal count", all(counts))
-print(f"  range {min(counts)}-{max(counts)}; 8 players would need "
-      f"{max(counts) * 8} of 56 cards at the top end")
-check("max deal works for 6 players", max(counts) * 6 <= 56)
+print(f"  range {min(counts)}-{max(counts)}")
+n_seats = len(seats)
+check(f"max deal works for {n_seats} players",
+      max(counts) * n_seats <= 56, f"needs {max(counts) * n_seats} of 56")
 
 print()
 if fail:

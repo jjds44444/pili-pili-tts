@@ -13,11 +13,23 @@ import json
 import math
 import os
 import random
+import zlib
 
 import numpy as np
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 import glyphs
+
+
+def stable_hash(text):
+    """A hash of `text` that is the same every run.
+
+    Python randomises str hash() per-process (PEP 456), so seeding art off
+    hash(title) made every mission/tile's glyph and background reshuffle on
+    every rebuild - a rebuild with no real content change still produced a
+    huge, meaningless diff. crc32 is stable and plenty for a seed.
+    """
+    return zlib.crc32(text.encode("utf-8"))
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ASSETS = os.path.join(HERE, "assets")
@@ -252,7 +264,7 @@ MISSION_ICONS = {
 def mission_card(title, body, cards, expert=False):
     w, h = CARD_W * SS, CARD_H * SS
     card = Image.new("RGBA", (w, h), PAPER + (255,))
-    card.alpha_composite(glyphs.scatter((w, h), seed=abs(hash(title)) % 9991,
+    card.alpha_composite(glyphs.scatter((w, h), seed=stable_hash(title) % 9991,
                                         colour=(235, 231, 223), count=26,
                                         glyph_px=int(w * 0.15)))
 
@@ -264,7 +276,7 @@ def mission_card(title, body, cards, expert=False):
 
     # pictogram: solid ink so it reads on the pale card
     s = int(w * 0.38)
-    pic = glyphs.glyph(s, seed=abs(hash(title)) % 99991, colour=INK, ink=PAPER,
+    pic = glyphs.glyph(s, seed=stable_hash(title) % 99991, colour=INK, ink=PAPER,
                        silhouette=MISSION_ICONS.get(title))
     card.alpha_composite(pic, ((w - s) // 2, int(h * 0.105)))
 
@@ -310,7 +322,7 @@ def plaque(cw, ch, title, ground=(20, 18, 18), accent=(232, 196, 92),
     """Dark tile used for the in-world control objects: dibbers, round button."""
     w, h = cw * SS, ch * SS
     tile = Image.new("RGBA", (w, h), ground + (255,))
-    tile.alpha_composite(glyphs.scatter((w, h), seed=abs(hash(title)) % 7777,
+    tile.alpha_composite(glyphs.scatter((w, h), seed=stable_hash(title) % 7777,
                                         colour=shade(ground, 2.4),
                                         count=26, glyph_px=int(min(w, h) * 0.30)))
     d = ImageDraw.Draw(tile)

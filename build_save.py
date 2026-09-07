@@ -28,37 +28,43 @@ DEFAULT_BASE_URL = "https://raw.githubusercontent.com/jjds44444/pili-pili-tts/ma
 import art  # noqa: E402  (lives next to this script)
 
 
-POS_PLAY = (-6.2, 1.6, -2.8)
-POS_ASIDE = (-6.2, 1.6, 2.8)
-POS_MISSION = (6.2, 1.6, 2.8)
-POS_REVEAL = (6.2, 1.6, -2.8)
-POS_DISCARD = (0.0, 1.6, -3.4)
-POS_BUTTON = (0.0, 1.3, 3.4)
-POS_PILIS = (-11.0, 1.6, -5.0)
-
-# how far out from the middle each per-seat object sits, as a fraction of the
-# seat's own position, plus a sideways nudge so dibber and Pilis don't overlap
-F_DIBBER, F_TRICKS = 0.82, 0.55
-SIDE_OFFSET = 2.9
-
-# Table_Poker's playing surface, roughly, in TTS units.
-TABLE_A, TABLE_B = 17.0, 9.5
-
-# Where each seat sits on that oval, as fractions of (TABLE_A, TABLE_B),
-# and which colour is in it. THIS ORDER MUST MATCH THE TABLE'S OWN SEATS -
-# TTS assigns colours to a built-in table's seats itself, and a zone only
-# works if it is parked at the seat of the colour it is tinted with. Sit in
-# each colour and check the nameplates, then reorder this list to match.
+# Seats on Table_Poker, in world units, lifted verbatim from the workshop mod
+# "The Gang [Scripted]" (3385562324) - a working 6-player game on this exact
+# table. They run along the +z long side and wrap slightly round the two
+# corners; the entire -z half (the dealer's cut-out) is free for the play area,
+# and with only 6 seats there is no crowding near the corners either.
 SEATS = [
-    ("White",  0.00,  1.00),   # bottom centre
-    ("Red",    0.58,  1.00),   # bottom right
-    ("Orange", 1.00,  0.00),   # right end
-    ("Yellow", 0.58, -1.00),   # top right
-    ("Green",  0.00, -1.00),   # top centre
-    ("Teal",  -0.58, -1.00),   # top left
-    ("Blue",  -1.00,  0.00),   # left end
-    ("Purple", -0.58, 1.00),   # bottom left
+    ("Red",    -34.07,  7.91),
+    ("Orange", -21.77, 14.48),
+    ("White",   -6.85, 14.42),
+    ("Green",    6.83, 14.45),
+    ("Blue",    21.04, 14.32),
+    ("Purple",  34.07,  7.91),
 ]
+
+# The real centre of the play area, where the snap-point ring for played
+# cards sits.
+PLAY_CENTRE = (0.0, -6.0)
+
+# A far-away point used ONLY to pick each seat's "inward" direction. Using the
+# real PLAY_CENTRE for this made every seat's controls point at one nearby
+# spot, so objects from different seats converged and crowded each other near
+# the middle the further out they sat. A distant reference point makes inward
+# directions nearly parallel across seats instead, which is what actually
+# gives every seat's own cluster of objects its own lane.
+DIR_CENTRE = (0.0, -500.0)
+
+OUT_MAT = 10.0        # trick mat, in front of the seat
+OUT_CTRL = 3.0        # dibber and Pili tray, between the seat and the mat
+SIDE_CTRL = 3.0        # and apart from each other
+
+POS_PLAY = (-16.0, 1.6, -15.0)
+POS_ASIDE = (-25.0, 1.6, -15.0)
+POS_MISSION = (16.0, 1.6, -15.0)
+POS_DISCARD = (25.0, 1.6, -15.0)
+POS_REVEAL = (0.0, 1.6, -11.0)
+POS_BUTTON = (0.0, 1.3, -16.5)
+POS_PILIS = (0.0, 1.6, -5.0)
 
 _used_guids = set()
 
@@ -121,14 +127,35 @@ def deck(deck_id, cards, nickname, gm_notes, cd, pos, rot=(0, 180, 180)):
     })
 
 
-def hand_zone(color, fx, fz):
-    """Hand zone at (fx, fz) as a fraction of the table's half-width/depth.
+def seat_frame(x, z):
+    """A seat's inward direction (see DIR_CENTRE above) and its tangent."""
+    dx, dz = DIR_CENTRE[0] - x, DIR_CENTRE[1] - z
+    n = math.hypot(dx, dz) or 1.0
+    inward = (dx / n, dz / n)
+    tangent = (-inward[1], inward[0])
+    return inward, tangent
 
-    Table_Poker is an oval, so an evenly-spaced circle of zones does not land
-    on its seats - they run along the two long sides plus one at each end.
-    """
-    x, z = fx * TABLE_A, fz * TABLE_B
-    rot_y = math.degrees(math.atan2(-x, -z)) % 360.0   # face the middle
+
+# Table_Poker's felt, estimated from real objects in "The Gang" workshop
+# mods (see layout_preview.py). Corner seats can walk a per-seat offset
+# outside this with a large enough SIDE_CTRL, so every computed spot is
+# clamped back onto it with a small margin - cheap insurance since these
+# bounds are themselves an estimate, not a value TTS exposes directly.
+FELT_X, FELT_Z, FELT_MARGIN = 38.0, 19.0, 2.0
+
+
+def seat_spot(x, z, out, side=0.0):
+    inward, tangent = seat_frame(x, z)
+    px = x + inward[0] * out + tangent[0] * side
+    pz = z + inward[1] * out + tangent[1] * side
+    lim_x, lim_z = FELT_X - FELT_MARGIN, FELT_Z - FELT_MARGIN
+    return (max(-lim_x, min(lim_x, px)), max(-lim_z, min(lim_z, pz)))
+
+
+def hand_zone(color, x, z):
+    """Hand zone at a seat. rotY 180 throughout, matching the reference mod -
+    every seat on this table looks across it the same way."""
+    rot_y = 180.0
     zone = dict(BASE_FLAGS)
     zone.update({
         "GUID": guid(), "Name": "HandTrigger",
@@ -144,16 +171,6 @@ def hand_zone(color, fx, fz):
         "LuaScript": "", "LuaScriptState": "", "XmlUI": "",
     })
     return zone
-
-
-def seat_frame(fx, fz):
-    """Seat position plus its inward-facing rotation and sideways axis."""
-    x, z = fx * TABLE_A, fz * TABLE_B
-    rot_y = math.degrees(math.atan2(-x, -z)) % 360.0
-    n = math.hypot(x, z) or 1.0
-    inward = (-x / n, -z / n)
-    right = (-inward[1], inward[0])
-    return (x, z), rot_y, right
 
 
 def custom_tile(image_url, pos, rot_y, nickname, gm_notes, scale, locked=True):
@@ -198,7 +215,7 @@ def scripting_zone(pos, rot_y, gm_notes, size=(3.4, 3.0, 3.4)):
 def dealer_marker(image_url, pos):
     return dict(BASE_FLAGS, **{
         "GUID": guid(), "Name": "Custom_Token",
-        "Transform": transform(pos, (0, 0, 0), 0.9),
+        "Transform": transform(pos, (0, 0, 0), 0.7),
         "Nickname": "Dealer", "Description":
             "Bets start here and this seat leads the first trick. Passes left each round.",
         "GMNotes": "PILI:DEALER", "Hands": False,
@@ -305,36 +322,38 @@ def build(missions, urls, out_dir):
     # place by layoutTable() at load, measured off the hand zones - so the hand
     # zone is the single source of truth for where a seat is, and correcting
     # SEATS re-lays the whole table automatically.
-    for colour, fx, fz in SEATS:
-        objects.append(hand_zone(colour, fx, fz))
-        (sx, sz), rot_y, right = seat_frame(fx, fz)
+    for colour, sx, sz in SEATS:
+        objects.append(hand_zone(colour, sx, sz))
+        rot_y = 180.0
 
-        dx, dz = sx * F_DIBBER, sz * F_DIBBER
-        objects.append(custom_tile(
-            urls["dibber"],
-            (dx + right[0] * SIDE_OFFSET, 1.3, dz + right[1] * SIDE_OFFSET),
-            rot_y, f"{colour} bid", f"PILI:DIBBER:{colour}", scale=1.1))
+        mx, mz = seat_spot(sx, sz, OUT_MAT)
+        objects.append(custom_tile(urls["mat"], (mx, 1.2, mz), rot_y,
+                                   f"{colour} tricks", f"PILI:MAT:{colour}",
+                                   scale=1.9))
+        objects.append(scripting_zone((mx, 2.2, mz), rot_y,
+                                      f"PILI:TRICKS:{colour}",
+                                      size=(4.4, 4.0, 4.0)))
 
-        objects.append(custom_tile(
-            urls["mat"], (sx * F_TRICKS, 1.2, sz * F_TRICKS), rot_y,
-            f"{colour} tricks", f"PILI:MAT:{colour}", scale=1.7))
-        objects.append(scripting_zone(
-            (sx * F_TRICKS, 2.0, sz * F_TRICKS), rot_y,
-            f"PILI:TRICKS:{colour}", size=(3.8, 3.0, 3.4)))
+        bx, bz = seat_spot(sx, sz, OUT_CTRL, SIDE_CTRL)
+        objects.append(custom_tile(urls["dibber"], (bx, 1.2, bz), rot_y,
+                                   f"{colour} bid", f"PILI:DIBBER:{colour}",
+                                   scale=1.3))
 
-        objects.append(custom_tile(
-            urls["tray"],
-            (dx - right[0] * SIDE_OFFSET, 1.2, dz - right[1] * SIDE_OFFSET),
-            rot_y, f"{colour} pilis", f"PILI:TRAY:{colour}", scale=1.2))
-        objects.append(scripting_zone(
-            (dx - right[0] * SIDE_OFFSET, 2.0, dz - right[1] * SIDE_OFFSET),
-            rot_y, f"PILI:PILIS:{colour}", size=(3.2, 3.0, 3.2)))
+        px, pz = seat_spot(sx, sz, OUT_CTRL, -SIDE_CTRL)
+        objects.append(custom_tile(urls["tray"], (px, 1.2, pz), rot_y,
+                                   f"{colour} pilis", f"PILI:TRAY:{colour}",
+                                   scale=1.2))
+        objects.append(scripting_zone((px, 2.2, pz), rot_y,
+                                      f"PILI:PILIS:{colour}",
+                                      size=(3.2, 4.0, 3.2)))
 
     objects.append(custom_tile(urls["button"], POS_BUTTON, 0.0,
                                "Next Round", "PILI:BUTTON", scale=2.0))
-    first_seat = seat_frame(SEATS[0][1], SEATS[0][2])[0]
-    objects.append(dealer_marker(
-        urls["dealer"], (first_seat[0] * 0.90, 1.6, first_seat[1] * 0.90)))
+    # straight in front of the seat, in the gap the dibber and tray leave
+    # offset to the side of the dealer's own dibber, level with it, so it
+    # never competes with the mat sitting further out on the same line
+    dx, dz = seat_spot(SEATS[0][1], SEATS[0][2], OUT_CTRL, SIDE_CTRL * 2.2)
+    objects.append(dealer_marker(urls["dealer"], (dx, 1.6, dz)))
 
     # play deck: 1-55 plus the Joker
     cd_play = custom_deck(urls["play_face"], urls["play_back"], 8, 7)
@@ -366,8 +385,9 @@ def build(missions, urls, out_dir):
     for i in range(len(SEATS)):
         th = math.radians(360.0 * i / len(SEATS))
         snaps.append({
-            "Position": {"x": -2.4 * math.sin(th), "y": 1.02, "z": -2.4 * math.cos(th)},
-            "Rotation": {"x": 0.0, "y": 360.0 * i / len(SEATS), "z": 0.0},
+            "Position": {"x": PLAY_CENTRE[0] + 5.0 * math.sin(th), "y": 1.02,
+                         "z": PLAY_CENTRE[1] + 5.0 * math.cos(th)},
+            "Rotation": {"x": 0.0, "y": 180.0, "z": 0.0},
             "Tags": [],
         })
     for spot in (POS_REVEAL, POS_ASIDE):
@@ -379,8 +399,13 @@ def build(missions, urls, out_dir):
     # the seating order is defined once, here, and injected rather than
     # duplicated in the Lua where it could drift out of sync
     order = ", ".join('"%s"' % c for c, _, _ in SEATS)
-    lua = ("-- generated by build_save.py from SEATS; do not edit\n"
-           "SEAT_ORDER = {%s}\n\n" % order) + lua
+    header = ["-- generated by build_save.py; do not edit, change the Python",
+              "SEAT_ORDER = {%s}" % order]
+    for name, p in (("POS_PLAY", POS_PLAY), ("POS_ASIDE", POS_ASIDE),
+                    ("POS_MISSION", POS_MISSION), ("POS_REVEAL", POS_REVEAL),
+                    ("POS_DISCARD", POS_DISCARD)):
+        header.append("%s = {%.2f, %.2f, %.2f}" % (name, p[0], p[1], p[2]))
+    lua = "\n".join(header) + "\n\n" + lua
 
     save = {
         "SaveName": "Pili Pili",

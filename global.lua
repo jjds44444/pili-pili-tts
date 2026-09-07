@@ -19,11 +19,9 @@ TAG_TRAY = "PILI:TRAY:"
 TAG_BUTTON = "PILI:BUTTON"
 TAG_DEALER = "PILI:DEALER"
 
-POS_PLAY = {-6.2, 1.6, -2.8}
-POS_ASIDE = {-6.2, 1.6, 2.8}
-POS_MISSION = {6.2, 1.6, 2.8}
-POS_REVEAL = {6.2, 1.6, -2.8}
-POS_DISCARD = {0.0, 1.6, -3.4}
+-- POS_PLAY, POS_ASIDE, POS_MISSION, POS_REVEAL and POS_DISCARD are injected
+-- above this line by build_save.py, from the same constants that place the
+-- objects in the save. Do not redeclare them here or they will drift apart.
 
 PILI_LIMIT = 6
 
@@ -49,108 +47,7 @@ function onLoad(state)
             dealt = s.dealt or 0
         end
     end
-    Wait.time(function()
-        layoutTable()
-        buildControls()
-    end, 0.6)
-end
-
--- ------------------------------------------------------------------ layout --
---
--- Nothing on the table has a hand-tuned position. Every seat's dibber, trick
--- mat and Pili tray is measured off that colour's hand zone, and the shared
--- objects off the average distance of the seats from the middle. Fix a seat and
--- everything around it follows, on any table of any size.
-
-ALL_COLOURS = {"White", "Brown", "Red", "Orange", "Yellow",
-               "Green", "Teal", "Blue", "Purple", "Pink"}
-
-function seatAnchors()
-    local out, order = {}, {}
-    for _, c in ipairs(ALL_COLOURS) do
-        local ok, t = pcall(function() return Player[c].getHandTransform() end)
-        if ok and t ~= nil and t.position ~= nil then
-            local p = t.position
-            if math.abs(p.x) + math.abs(p.z) > 0.01 then
-                out[c] = p
-                table.insert(order, c)
-            end
-        end
-    end
-    table.sort(order, function(a, b)
-        return math.atan2(out[a].x, out[a].z) < math.atan2(out[b].x, out[b].z)
-    end)
-    return out, order
-end
-
-function place(obj, x, z, rot_y, scale)
-    if obj == nil then return end
-    local y = obj.getPosition().y
-    obj.setPosition({x, y, z})
-    obj.setRotation({0, rot_y, 0})
-    if scale ~= nil then obj.setScale({scale, obj.getScale().y, scale}) end
-end
-
-function layoutTable()
-    local seats, order = seatAnchors()
-    if #order == 0 then return end
-    SEAT_ORDER = order
-
-    local rsum = 0
-    for _, c in ipairs(order) do
-        rsum = rsum + math.sqrt(seats[c].x ^ 2 + seats[c].z ^ 2)
-    end
-    local R = rsum / #order
-    local unit = R / 16.0                     -- object sizes scale with the table
-
-    for _, c in ipairs(order) do
-        local p = seats[c]
-        local n = math.sqrt(p.x ^ 2 + p.z ^ 2)
-        local ix, iz = -p.x / n, -p.z / n     -- inward, toward the middle
-        local rx, rz = -iz, ix                -- along the table edge
-        local rot = math.deg(math.atan2(-p.x, -p.z)) % 360
-
-        local dOut, side = R * 0.72, R * 0.19
-        place(one(TAG_DIBBER .. c), p.x * dOut / n + rx * side,
-              p.z * dOut / n + rz * side, rot, 1.1 * unit)
-        place(one(TAG_TRAY .. c), p.x * dOut / n - rx * side,
-              p.z * dOut / n - rz * side, rot, 1.2 * unit)
-        place(one(TAG_PILIS .. c), p.x * dOut / n - rx * side,
-              p.z * dOut / n - rz * side, rot)
-        place(one(TAG_MAT .. c), p.x * 0.50, p.z * 0.50, rot, 1.7 * unit)
-        place(one(TAG_TRICKS .. c), p.x * 0.50, p.z * 0.50, rot)
-    end
-
-    -- seats nobody can use get tucked under the table rather than left lying
-    -- around looking like part of the game
-    for _, c in ipairs(ALL_COLOURS) do
-        if seats[c] == nil then
-            for _, tag in ipairs({TAG_DIBBER, TAG_TRAY, TAG_MAT,
-                                  TAG_PILIS, TAG_TRICKS}) do
-                local o = one(tag .. c)
-                if o ~= nil then o.setPosition({0, -8, 0}) end
-            end
-        end
-    end
-
-    -- shared objects, all relative to the same measured radius
-    local d = R * 0.34
-    POS_PLAY = {-d, 1.6, -R * 0.16}
-    POS_ASIDE = {-d, 1.6, R * 0.16}
-    POS_MISSION = {d, 1.6, R * 0.16}
-    POS_REVEAL = {d, 1.6, -R * 0.16}
-    POS_DISCARD = {R * 0.55, 1.6, 0}
-
-    moveTagged(TAG_PLAY, POS_PLAY)
-    moveTagged(TAG_MISSION, POS_MISSION)
-    place(one(TAG_BUTTON), 0, R * 0.22, 0, 1.3 * unit)
-    local bag = one("PILI:BAG")
-    if bag ~= nil then place(bag, -R * 0.55, 0, 0) end
-end
-
-function moveTagged(tag, pos)
-    local o = biggest(tag)
-    if o ~= nil then o.setPosition(pos) end
+    Wait.time(buildControls, 0.6)
 end
 
 -- ------------------------------------------------------------------ finding --
