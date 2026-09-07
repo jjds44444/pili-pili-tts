@@ -15,7 +15,7 @@ import os
 import random
 
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFilter, ImageFont
 
 import glyphs
 
@@ -38,7 +38,7 @@ LEAF = (108, 178, 52)
 
 # value bands, eyeballed from the published cards
 BANDS = [
-    (11, (46, 108, 199)),      # 1-11   blue
+    (11, (44, 116, 206)),      # 1-11   blue
     (22, (26, 194, 216)),      # 12-22  cyan
     (33, (92, 198, 61)),       # 23-33  green
     (41, (246, 197, 30)),      # 34-41  yellow
@@ -59,6 +59,98 @@ def band_colour(value):
 
 def shade(col, f):
     return tuple(max(0, min(255, int(c * f))) for c in col)
+
+
+def fit_font(path, text, max_w, max_h, probe=100):
+    """Font sized so `text` fills the box - a lone '4' should read as big as
+    a '44', which a fixed point size never gives you."""
+    f = font(path, probe)
+    bb = f.getbbox(text)
+    tw, th = max(1, bb[2] - bb[0]), max(1, bb[3] - bb[1])
+    return font(path, max(8, int(probe * min(max_w / tw, max_h / th))))
+
+
+# light marks only - the heavy ones swallow a digit stroke
+def _digit_marks(mask, stroke, seed):
+    """Sparse ink inside a digit: sized to the stroke, never spanning it."""
+    a = np.asarray(mask)
+    out = Image.new("L", mask.size, 0)
+    if not a.any():
+        return out
+
+    # Sample mark centres from the stroke's interior, not its edge: a mark
+    # placed on the boundary gets clipped to a sliver and reads as dirt.
+    # Blur-and-threshold is a cheap stand-in for a big erosion kernel.
+    soft = mask.filter(ImageFilter.GaussianBlur(max(1.0, stroke * 0.24)))
+    inner = np.asarray(soft) > 190
+    ys, xs = np.nonzero(inner if inner.any() else a)
+    if len(xs) == 0:
+        return out
+    rng = random.Random(seed)
+    n = int(len(xs) / max(1.0, stroke * stroke) * 1.6)
+    n = max(4, min(12, n))
+    d = ImageDraw.Draw(out)
+    s = stroke
+    for _ in range(n):
+        i = rng.randrange(len(xs))
+        cx, cy = float(xs[i]), float(ys[i])
+        kind = rng.choice(("dot", "dots", "chev", "hatch", "ring"))
+        if kind == "dot":
+            r = s * .15
+            d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=255)
+        elif kind == "dots":
+            r = s * .11
+            for k in (-1, 0, 1):
+                x = cx + k * s * .32
+                d.ellipse([x - r, cy - r, x + r, cy + r], fill=255)
+        elif kind == "chev":
+            half, wdt = s * .32, max(1, int(s * .13))
+            d.line([(cx - half, cy + half * .5), (cx, cy - half * .45),
+                    (cx + half, cy + half * .5)], fill=255, width=wdt, joint="curve")
+        elif kind == "hatch":
+            wdt = max(1, int(s * .11))
+            for k in (-1, 0, 1):
+                x = cx + k * s * .26
+                d.line([(x, cy - s * .34), (x, cy + s * .34)], fill=255, width=wdt)
+        else:
+            r, wdt = s * .20, max(1, int(s * .10))
+            d.ellipse([cx - r, cy - r, cx + r, cy + r], outline=255, width=wdt)
+    return Image.fromarray(np.minimum(np.asarray(out), a).astype(np.uint8), "L")
+
+
+def inked_numeral(layer, centre, text, fnt, key_width, rough, seed,
+                  fill=(255, 255, 255), key=INK, tracking=0.07):
+    """The big centre number: digits set individually so they get their own
+    ink and a little breathing room, then one shared keyline."""
+    w, h = layer.size
+    cx, cy = centre
+    advances = [fnt.getlength(ch) for ch in text]
+    gap = tracking * (sum(advances) / len(advances))
+    total = sum(advances) + gap * (len(text) - 1)
+
+    per_digit = []
+    x = cx - total / 2.0
+    for ch, adv in zip(text, advances):
+        m = Image.new("L", (w, h), 0)
+        ImageDraw.Draw(m).text((x + adv / 2.0, cy), ch, font=fnt, fill=255, anchor="mm")
+        if rough:
+            m = glyphs.roughen(m, amount=rough)
+        per_digit.append(m)
+        x += adv + gap
+
+    whole = per_digit[0]
+    for m in per_digit[1:]:
+        whole = Image.fromarray(
+            np.maximum(np.asarray(whole), np.asarray(m)).astype(np.uint8), "L")
+
+    ring = glyphs.outline(whole, key_width)
+    layer.paste(Image.new("RGBA", (w, h), key + (255,)), (0, 0), ring)
+    layer.paste(Image.new("RGBA", (w, h), fill + (255,)), (0, 0), whole)
+
+    stroke = max(4.0, fnt.size * 0.21)
+    for i, m in enumerate(per_digit):
+        marks = _digit_marks(m, stroke, seed * 31 + i)
+        layer.paste(Image.new("RGBA", (w, h), key + (255,)), (0, 0), marks)
 
 
 def inked_text(layer, xy, text, fnt, anchor="mm", fill=(255, 255, 255),
@@ -96,16 +188,16 @@ def number_card(value):
     card = Image.new("RGBA", (w, h), base + (255,))
 
     card.alpha_composite(glyphs.scatter((w, h), seed=value * 31 + 7,
-                                        colour=shade(base, 0.82),
-                                        count=30, glyph_px=int(w * 0.155)))
+                                        colour=shade(base, 0.91),
+                                        count=52, glyph_px=int(w * 0.105)))
 
-    big = font(FONT_BLACK, int(h * (0.42 if value < 10 else 0.34)))
-    inked_text(card, (w // 2, int(h * 0.50)), str(value), big,
-               key_width=max(4, int(w * 0.014)), marks_seed=value * 977,
-               rough=w * 0.004)
+    big = fit_font(FONT_BLACK, str(value), w * 0.68, h * 0.34)
+    inked_numeral(card, (w // 2, int(h * 0.50)), str(value), big,
+                  key_width=max(5, int(w * 0.020)), rough=w * 0.005,
+                  seed=value * 977)
 
-    small = font(FONT_BLACK, int(h * 0.085))
-    pad_x, pad_y = int(w * 0.085), int(h * 0.062)
+    small = font(FONT_BLACK, int(h * 0.095))
+    pad_x, pad_y = int(w * 0.095), int(h * 0.070)
     corner = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     inked_text(corner, (pad_x, pad_y), str(value), small,
                key_width=max(2, int(w * 0.007)), rough=w * 0.002)

@@ -22,7 +22,7 @@ from PIL import Image, ImageDraw, ImageFilter
 # hand-cut edges
 # --------------------------------------------------------------------------- #
 
-def roughen(mask, amount=2.6, scale=9):
+def roughen(mask, amount=2.6, scale=9, bite=0.72):
     """Wobble the edge of an 'L' mask.
 
     Blurs the mask into a soft ramp, then thresholds it against low-frequency
@@ -42,7 +42,7 @@ def roughen(mask, amount=2.6, scale=9):
 
     a = np.asarray(soft, dtype=np.float32)
     n = np.asarray(noise_img, dtype=np.float32)
-    thresh = 128.0 + (n - 128.0) * 0.55
+    thresh = 128.0 + (n - 128.0) * bite
     return Image.fromarray(((a > thresh) * 255).astype(np.uint8), "L")
 
 
@@ -381,14 +381,18 @@ def glyph(size, seed, colour=(255, 255, 255), ink=(0, 0, 0), rough=True,
     return layer
 
 
-def scatter(size, seed, colour, count=26, glyph_px=None, alpha=255):
-    """Background field of small glyphs, as on the real cards."""
+def scatter(size, seed, colour, count=26, glyph_px=None, alpha=255, rough=False):
+    """Background field of small glyphs, as on the real cards.
+
+    Roughening is off by default here: at background size it eats the detail
+    and leaves unrecognisable blobs.
+    """
     w, h = size
     rng = random.Random(seed)
     layer = Image.new("RGBA", (w, h), (0, 0, 0, 0))
     gp = glyph_px or int(min(w, h) * 0.16)
     for i in range(count):
-        g = glyph(gp, seed * 1000 + i, colour=colour, ink=colour, rough=True)
+        g = glyph(gp, seed * 1000 + i, colour=colour, ink=colour, rough=rough)
         g = g.rotate(rng.uniform(-22, 22), resample=Image.BICUBIC)
         if alpha < 255:
             g.putalpha(g.getchannel("A").point(lambda v: int(v * alpha / 255)))
