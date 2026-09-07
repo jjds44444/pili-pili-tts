@@ -448,7 +448,10 @@ function passDealer()
     local seated = getSeatedPlayers()
     if #seated == 0 then return end
 
-    local order = Turns.order
+    -- SEAT_ORDER is injected at build time from the SEATS table, so it is the
+    -- real seating order round the table rather than whatever order TTS
+    -- happens to hand back from getSeatedPlayers().
+    local order = SEAT_ORDER
     if order == nil or #order == 0 then order = seated end
 
     -- nearest seat to the marker now, then step to the next seated colour

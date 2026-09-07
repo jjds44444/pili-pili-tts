@@ -99,6 +99,22 @@ for u in sorted(urls):
         except Exception as e:                                  # noqa: BLE001
             check(f"  {name} reachable", False, f"{type(e).__name__}: {e}")
 
+print("\nrequired fields")
+# TTS writes these on every object it serialises. Omitting one makes the save
+# fail to load with a bare "Object reference not set to an instance of an
+# object" and no indication of which object is at fault.
+ALWAYS = ["Name", "Transform", "Nickname", "Description", "GMNotes",
+          "ColorDiffuse", "Locked", "Grid", "Snap", "Tooltip",
+          "LuaScript", "LuaScriptState", "XmlUI", "GUID"]
+missing = {}
+for o in save["ObjectStates"]:
+    for k in ALWAYS:
+        if k not in o:
+            missing.setdefault(o["Name"], set()).add(k)
+for name in sorted({o["Name"] for o in save["ObjectStates"]}):
+    check(f"  {name} has every required field", name not in missing,
+          ", ".join(sorted(missing.get(name, []))))
+
 print("\nlua")
 try:
     import lupa
@@ -126,8 +142,13 @@ for single in ("PILI:BUTTON", "PILI:DEALER", "PILI:BAG"):
     check(f"  exactly one {single}", notes.get(single) == 1)
 
 check("turn system enabled", save["Turns"]["Enable"] is True)
-check("turn order covers every seat",
-      sorted(save["Turns"]["TurnOrder"]) == sorted(seats))
+# order lives in the injected SEAT_ORDER, not the save's TurnOrder
+injected = re.search(r"SEAT_ORDER\s*=\s*\{([^}]*)\}", save["LuaScript"])
+check("SEAT_ORDER injected into the script", injected is not None)
+if injected:
+    order = re.findall(r'"([A-Za-z]+)"', injected.group(1))
+    check("SEAT_ORDER covers every seat exactly once",
+          sorted(order) == sorted(seats), f"{order}")
 check("no leftover floating UI", save["XmlUI"].strip() == "")
 
 print("\nscripting")
