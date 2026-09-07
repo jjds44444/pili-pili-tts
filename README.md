@@ -1,8 +1,9 @@
 # Pili Pili — Tabletop Simulator mod
 
 An unofficial fan implementation of **Pili Pili** (Ben, Martin & JB / ATM Gaming) for
-Tabletop Simulator. All artwork is drawn from scratch by `art.py` — no publisher art,
-photos, or rulebook text are reproduced.
+Tabletop Simulator, for personal use. Every card is drawn procedurally by `art.py` and
+`glyphs.py` — flat colour bands by value, tribal ink marks inside the numerals,
+scattered glyph fields, hand-cut wobbly edges — styled to match the published cards.
 
 ## Install
 
@@ -14,7 +15,8 @@ That renders the card sheets and drops `PiliPili.json` plus a `PiliPili_assets/`
 folder into your Tabletop Simulator **Saves** directory. Launch TTS →
 *Games → Save & Load → Pili Pili*.
 
-Needs Python 3 and Pillow (`pip install pillow`).
+Needs Python 3, Pillow and numpy (`pip install pillow numpy`). A full art render takes
+about 90 seconds; add `--skip-art` to reuse what's in `assets/`.
 
 ### Playing with other people
 

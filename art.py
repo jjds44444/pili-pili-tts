@@ -1,267 +1,332 @@
-"""Original card art for the Pili Pili TTS mod.
+"""Card art for the Pili Pili TTS mod.
 
-Everything here is drawn from scratch with Pillow - no publisher assets are used.
-Produces the deck sheets TTS expects (one grid image per deck) plus backs and a
-chili token.
+Drawn to match the published cards' linocut/tribal look: flat colour bands by
+value, a big centre numeral in white with a heavy black keyline and tribal ink
+marks inside the digit shapes, indices in all four corners, and a field of
+scattered glyphs in a darker tone of the card colour. Glyph vocabulary and the
+hand-cut edge treatment live in glyphs.py.
+
+Everything renders at SS x size and is downsampled, because the roughened edges
+need the resolution to read cleanly.
 """
-import colorsys
+import json
 import math
 import os
+import random
 
-from PIL import Image, ImageDraw, ImageFilter, ImageFont
+import numpy as np
+from PIL import Image, ImageDraw, ImageFont
+
+import glyphs
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 ASSETS = os.path.join(HERE, "assets")
 
 FONT_DIR = r"C:\Windows\Fonts"
-FONT_BLACK = os.path.join(FONT_DIR, "seguibl.ttf")   # Segoe UI Black
+FONT_BLACK = os.path.join(FONT_DIR, "seguibl.ttf")
 FONT_BOLD = os.path.join(FONT_DIR, "arialbd.ttf")
 FONT_REG = os.path.join(FONT_DIR, "arial.ttf")
 
 CARD_W, CARD_H = 400, 560
 BID_W, BID_H = 300, 420
+SS = 2                      # supersample factor
 
-CREAM = (247, 240, 228)
-INK = (28, 22, 20)
-DEEP = (26, 18, 16)
-CHILI_RED = (198, 34, 30)
-CHILI_DARK = (140, 20, 20)
-LEAF = (76, 140, 58)
+INK = (18, 16, 16)
+PAPER = (252, 250, 246)
+CHILI_RED = (222, 44, 38)
+LEAF = (108, 178, 52)
+
+# value bands, eyeballed from the published cards
+BANDS = [
+    (11, (46, 108, 199)),      # 1-11   blue
+    (22, (26, 194, 216)),      # 12-22  cyan
+    (33, (92, 198, 61)),       # 23-33  green
+    (41, (246, 197, 30)),      # 34-41  yellow
+    (55, (231, 50, 44)),       # 42-55  red
+]
 
 
 def font(path, size):
     return ImageFont.truetype(path, size)
 
 
-def heat_colors(t):
-    """t in 0..1 -> (light, dark) background pair going blue -> green -> red."""
-    hue = 0.62 * (1.0 - t) ** 1.15
-    sat = 0.62 + 0.33 * t
-    light = colorsys.hsv_to_rgb(hue, sat * 0.88, 0.93)
-    dark = colorsys.hsv_to_rgb(hue, min(1.0, sat * 1.05), 0.55)
-    to255 = lambda c: tuple(int(round(x * 255)) for x in c)
-    return to255(light), to255(dark)
+def band_colour(value):
+    for top, col in BANDS:
+        if value <= top:
+            return col
+    return BANDS[-1][1]
 
 
-def vertical_gradient(size, top, bottom):
-    w, h = size
-    grad = Image.new("RGB", (1, h))
-    px = grad.load()
-    for y in range(h):
-        f = y / max(1, h - 1)
-        px[0, y] = tuple(int(top[i] + (bottom[i] - top[i]) * f) for i in range(3))
-    return grad.resize((w, h), Image.BILINEAR)
+def shade(col, f):
+    return tuple(max(0, min(255, int(c * f))) for c in col)
 
 
-def rounded_mask(size, radius):
-    m = Image.new("L", size, 0)
-    ImageDraw.Draw(m).rounded_rectangle([0, 0, size[0] - 1, size[1] - 1], radius, fill=255)
-    return m
+def inked_text(layer, xy, text, fnt, anchor="mm", fill=(255, 255, 255),
+               key=INK, key_width=4, marks_seed=None, rough=2.2):
+    """Text as a hand-cut shape: roughened, heavy keyline, optional ink marks
+    inside the letterforms - the treatment on the real cards' numerals."""
+    w, h = layer.size
+    mask = Image.new("L", (w, h), 0)
+    ImageDraw.Draw(mask).text(xy, text, font=fnt, fill=255, anchor=anchor)
+    if rough:
+        mask = glyphs.roughen(mask, amount=rough)
 
+    ring = glyphs.outline(mask, key_width)
+    layer.paste(Image.new("RGBA", (w, h), key + (255,)), (0, 0), ring)
+    layer.paste(Image.new("RGBA", (w, h), fill + (255,)), (0, 0), mask)
 
-def draw_chili(img, cx, cy, size, body=CHILI_RED, shine=True, rot=-18, underside=True):
-    """A tapered curved pod with a stem, drawn on its own layer then rotated."""
-    pad = int(size * 1.5)
-    layer = Image.new("RGBA", (pad, pad), (0, 0, 0, 0))
-    d = ImageDraw.Draw(layer)
-    ox, oy = pad // 2, pad // 2
-
-    curve = 0.26
-    thick = 0.30
-    steps = 120
-
-    def spine(t):
-        return (ox + size * curve * math.sin(t * 2.0),
-                oy - size * 0.44 + size * 0.94 * t,
-                size * thick * (1.0 - t) ** 0.55)
-
-    for i in range(steps + 1):
-        x, y, r = spine(i / steps)
-        if r < 0.6:
-            continue
-        d.ellipse([x - r, y - r, x + r, y + r], fill=body + (255,))
-
-    if underside:
-        dark = tuple(max(0, int(c * 0.7)) for c in body)
-        for i in range(steps + 1):
-            x, y, r = spine(i / steps)
-            r *= 0.5
-            if r < 0.6:
-                continue
-            x += size * 0.075
-            y += size * 0.05
-            d.ellipse([x - r, y - r, x + r, y + r], fill=dark + (150,))
-
-    if shine:
-        for i in range(steps + 1):
-            t = i / steps
-            if t > 0.70:
-                continue
-            x, y, r = spine(t)
-            x -= size * 0.10
-            y -= size * 0.03
-            r = size * 0.062 * (1.0 - t) ** 0.5
-            if r < 0.6:
-                continue
-            d.ellipse([x - r, y - r, x + r, y + r], fill=(255, 255, 255, 130))
-
-    # stem
-    sx, sy = ox, oy - size * 0.44
-    d.line([(sx, sy + size * 0.06), (sx - size * 0.15, sy - size * 0.30)],
-           fill=LEAF + (255,), width=max(3, int(size * 0.085)))
-    d.ellipse([sx - size * 0.13, sy - size * 0.085, sx + size * 0.13, sy + size * 0.085],
-              fill=LEAF + (255,))
-
-    layer = layer.rotate(rot, resample=Image.BICUBIC, center=(ox, oy))
-    img.paste(layer, (int(cx - ox), int(cy - oy)), layer)
-
-
-def text_outlined(d, xy, text, fnt, fill, outline, width=5, anchor="mm"):
-    x, y = xy
-    for dx in range(-width, width + 1):
-        for dy in range(-width, width + 1):
-            if dx * dx + dy * dy > width * width:
-                continue
-            d.text((x + dx, y + dy), text, font=fnt, fill=outline, anchor=anchor)
-    d.text((x, y), text, font=fnt, fill=fill, anchor=anchor)
+    if marks_seed is not None:
+        bbox = mask.getbbox()
+        if bbox:
+            marks = Image.new("L", (w, h), 0)
+            rng = random.Random(marks_seed)
+            glyphs.ink_fill(ImageDraw.Draw(marks), bbox, rng, 255, marks=4)
+            marks = Image.fromarray(
+                np.minimum(np.asarray(marks), np.asarray(mask)).astype(np.uint8), "L")
+            layer.paste(Image.new("RGBA", (w, h), key + (255,)), (0, 0), marks)
 
 
 # --------------------------------------------------------------------------- #
-# card faces
+# faces
 # --------------------------------------------------------------------------- #
 
 def number_card(value):
-    t = (value - 1) / 54.0
-    light, dark = heat_colors(t)
-    card = vertical_gradient((CARD_W, CARD_H), light, dark).convert("RGBA")
-    d = ImageDraw.Draw(card)
+    w, h = CARD_W * SS, CARD_H * SS
+    base = band_colour(value)
+    card = Image.new("RGBA", (w, h), base + (255,))
 
-    # inner frame
-    d.rounded_rectangle([14, 14, CARD_W - 15, CARD_H - 15], 22,
-                        outline=(255, 255, 255, 90), width=3)
+    card.alpha_composite(glyphs.scatter((w, h), seed=value * 31 + 7,
+                                        colour=shade(base, 0.82),
+                                        count=30, glyph_px=int(w * 0.155)))
 
-    big = font(FONT_BLACK, 250 if value < 10 else 200)
-    text_outlined(d, (CARD_W // 2, CARD_H // 2 - 18), str(value), big,
-                  (255, 255, 255), (0, 0, 0), width=7)
+    big = font(FONT_BLACK, int(h * (0.42 if value < 10 else 0.34)))
+    inked_text(card, (w // 2, int(h * 0.50)), str(value), big,
+               key_width=max(4, int(w * 0.014)), marks_seed=value * 977,
+               rough=w * 0.004)
 
-    small = font(FONT_BLACK, 50)
-    text_outlined(d, (50, 54), str(value), small, (255, 255, 255), (0, 0, 0), width=3)
-    corner = Image.new("RGBA", (140, 100), (0, 0, 0, 0))
-    cd = ImageDraw.Draw(corner)
-    text_outlined(cd, (70, 50), str(value), small, (255, 255, 255), (0, 0, 0), width=3)
-    corner = corner.rotate(180)
-    card.paste(corner, (CARD_W - 140 - 8, CARD_H - 100 - 8), corner)
+    small = font(FONT_BLACK, int(h * 0.085))
+    pad_x, pad_y = int(w * 0.085), int(h * 0.062)
+    corner = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    inked_text(corner, (pad_x, pad_y), str(value), small,
+               key_width=max(2, int(w * 0.007)), rough=w * 0.002)
+    inked_text(corner, (w - pad_x, pad_y), str(value), small,
+               key_width=max(2, int(w * 0.007)), rough=w * 0.002)
+    card.alpha_composite(corner)
+    card.alpha_composite(corner.rotate(180))
 
-    # heat pips (Scoville-ish read of the card's strength)
-    pips = max(1, min(5, math.ceil(value / 11)))
-    step = 40
-    start = CARD_W // 2 - (pips - 1) * step // 2
-    for i in range(pips):
-        draw_chili(card, start + i * step, CARD_H - 96, 42,
-                   body=(255, 255, 255), shine=False, underside=False)
-
-    return card.convert("RGB")
+    return card.resize((CARD_W, CARD_H), Image.LANCZOS).convert("RGB")
 
 
 def joker_card():
-    card = vertical_gradient((CARD_W, CARD_H), (58, 44, 40), (18, 12, 12)).convert("RGBA")
+    w, h = CARD_W * SS, CARD_H * SS
+    card = Image.new("RGBA", (w, h), (16, 15, 15, 255))
+    card.alpha_composite(glyphs.scatter((w, h), seed=4242, colour=(44, 41, 40),
+                                        count=34, glyph_px=int(w * 0.15)))
+
+    s = int(w * 0.62)
+    pod = Image.new("RGBA", (s, s), (0, 0, 0, 0))
+    body = Image.new("L", (s, s), 0)
+    glyphs._sil_chili(ImageDraw.Draw(body), s, random.Random(1))
+    body = glyphs.roughen(body, amount=s * 0.01)
+    pod.paste(Image.new("RGBA", (s, s), CHILI_RED + (255,)), (0, 0), body)
+    stem = Image.new("L", (s, s), 0)
+    sd = ImageDraw.Draw(stem)
+    sd.line([(s * .52, s * .13), (s * .43, s * .01)], fill=255, width=int(s * .05))
+    sd.ellipse([s * .45, s * .00, s * .59, s * .07], fill=255)
+    pod.paste(Image.new("RGBA", (s, s), LEAF + (255,)), (0, 0), stem)
+    card.alpha_composite(pod, ((w - s) // 2, int(h * 0.20)))
+
     d = ImageDraw.Draw(card)
-    d.rounded_rectangle([14, 14, CARD_W - 15, CARD_H - 15], 22,
-                        outline=(232, 196, 92), width=4)
-    draw_chili(card, CARD_W // 2, CARD_H // 2 - 40, 250, body=(226, 62, 46))
-    d = ImageDraw.Draw(card)
-    d.text((CARD_W // 2, CARD_H - 128), "JOKER", font=font(FONT_BLACK, 62),
-           fill=(232, 196, 92), anchor="mm")
-    d.text((CARD_W // 2, CARD_H - 74), "declare any value 0-56", font=font(FONT_REG, 26),
-           fill=(226, 214, 200), anchor="mm")
-    return card.convert("RGB")
+    d.text((w // 2, int(h * 0.855)), "JOKER", font=font(FONT_BLACK, int(h * 0.085)),
+           fill=PAPER, anchor="mm")
+    d.text((w // 2, int(h * 0.925)), "any value 0 - 56",
+           font=font(FONT_BOLD, int(h * 0.038)), fill=(196, 190, 182), anchor="mm")
+    return card.resize((CARD_W, CARD_H), Image.LANCZOS).convert("RGB")
+
+
+# which pictogram depicts which effect
+MISSION_ICONS = {
+    "Pass Left": "arrows", "Pass Right": "arrows", "Double Pass": "arrows",
+    "Double Back": "arrows", "Hand Over": "arrows", "Hand Back": "arrows",
+    "No Zero": "ban", "No One": "ban", "No Echo": "ban", "No Doubles": "ban",
+    "One More": "hand", "Open Hand": "eye", "Forehead": "forehead",
+    "Blind Round": "forehead", "All At Once": "sun", "Cool Down": "chili",
+    "Upside Down": "updown", "High Or Low": "updown", "Trade Off": "swap",
+    "Three Seconds": "clock", "Quickfire": "clock",
+    "First & Last": "totem", "Cursed Cards": "mask", "Shared Burn": "figure",
+}
 
 
 def mission_card(title, body, cards, expert=False):
-    header = (150, 26, 22) if not expert else (30, 30, 34)
-    card = Image.new("RGBA", (CARD_W, CARD_H), CREAM + (255,))
+    w, h = CARD_W * SS, CARD_H * SS
+    card = Image.new("RGBA", (w, h), PAPER + (255,))
+    card.alpha_composite(glyphs.scatter((w, h), seed=abs(hash(title)) % 9991,
+                                        colour=(235, 231, 223), count=26,
+                                        glyph_px=int(w * 0.15)))
+
+    accent = CHILI_RED if expert else (34, 32, 32)
     d = ImageDraw.Draw(card)
-    d.rectangle([0, 0, CARD_W, 150], fill=header)
-    d.rectangle([0, 150, CARD_W, 158], fill=(232, 196, 92))
 
-    d.text((CARD_W // 2, 40), "EXPERT MISSION" if expert else "MISSION",
-           font=font(FONT_BOLD, 26), fill=(240, 200, 190), anchor="mm")
+    d.text((w // 2, int(h * 0.055)), "EXPERT MISSION" if expert else "MISSION",
+           font=font(FONT_BOLD, int(h * 0.035)), fill=accent, anchor="mm")
 
-    size = 52
-    fnt = font(FONT_BLACK, size)
-    while d.textlength(title.upper(), font=fnt) > CARD_W - 48 and size > 26:
-        size -= 2
-        fnt = font(FONT_BLACK, size)
-    d.text((CARD_W // 2, 100), title.upper(), font=fnt, fill=CREAM, anchor="mm")
+    # pictogram: solid ink so it reads on the pale card
+    s = int(w * 0.38)
+    pic = glyphs.glyph(s, seed=abs(hash(title)) % 99991, colour=INK, ink=PAPER,
+                       silhouette=MISSION_ICONS.get(title))
+    card.alpha_composite(pic, ((w - s) // 2, int(h * 0.105)))
 
+    # lay the text out from the bottom up so the blocks cannot collide
     lines = body.split("\n")
-    bs = 32
+    bs = int(h * 0.042)
     bf = font(FONT_REG, bs)
-    while max(d.textlength(l, font=bf) for l in lines) > CARD_W - 56 and bs > 17:
+    while max(d.textlength(l, font=bf) for l in lines) > w * 0.84 and bs > int(h * 0.024):
         bs -= 1
         bf = font(FONT_REG, bs)
-    y = 285 - (len(lines) - 1) * (bs + 11) // 2
+    gap = int(h * 0.013)
+    block = len(lines) * bs + (len(lines) - 1) * gap
+    body_bottom = int(h * 0.80)
+    y = body_bottom - block + bs // 2
+
+    size = int(h * 0.072)
+    fnt = font(FONT_BLACK, size)
+    while d.textlength(title.upper(), font=fnt) > w * 0.88 and size > int(h * 0.038):
+        size -= 2
+        fnt = font(FONT_BLACK, size)
+    d.text((w // 2, y - bs // 2 - int(h * 0.032) - size // 2), title.upper(),
+           font=fnt, fill=INK, anchor="mm")
+
     for line in lines:
-        d.text((CARD_W // 2, y), line, font=bf, fill=INK, anchor="mm")
-        y += bs + 11
+        d.text((w // 2, y), line, font=bf, fill=(62, 58, 56), anchor="mm")
+        y += bs + gap
 
-    # deal count, bottom-left as on the printed cards
-    d.ellipse([26, CARD_H - 122, 138, CARD_H - 10], fill=CHILI_RED)
-    d.text((82, CARD_H - 68), str(cards), font=font(FONT_BLACK, 68),
-           fill=CREAM, anchor="mm")
-    d.text((82, CARD_H - 134), "CARDS EACH", font=font(FONT_BOLD, 20),
-           fill=(120, 106, 96), anchor="mm")
-
-    draw_chili(card, CARD_W - 74, CARD_H - 72, 96)
+    # deal count, dark box bottom-left as on the real cards
+    box = int(w * 0.19)
+    bx, by = int(w * 0.055), h - box - int(w * 0.05)
+    d.rounded_rectangle([bx, by, bx + box, by + box], int(box * 0.16), fill=accent)
+    d.text((bx + box // 2, by + box // 2), str(cards),
+           font=font(FONT_BLACK, int(box * 0.60)), fill=PAPER, anchor="mm")
 
     if expert:
-        # red card symbol in the header marks an Expert mission
-        d.rounded_rectangle([CARD_W - 66, 14, CARD_W - 18, 78], 7,
-                            fill=CHILI_RED, outline=(240, 200, 190), width=2)
-        d.text((CARD_W - 42, 46), "!", font=font(FONT_BLACK, 38), fill=CREAM, anchor="mm")
-        d.rectangle([0, 0, CARD_W - 1, CARD_H - 1], outline=CHILI_RED, width=8)
+        d.rectangle([0, 0, w - 1, h - 1], outline=CHILI_RED, width=int(w * 0.022))
 
-    return card.convert("RGB")
+    return card.resize((CARD_W, CARD_H), Image.LANCZOS).convert("RGB")
 
 
 def bid_card(n):
-    card = vertical_gradient((BID_W, BID_H), (54, 50, 66), (22, 20, 30)).convert("RGBA")
+    w, h = BID_W * SS, BID_H * SS
+    card = Image.new("RGBA", (w, h), (32, 30, 38, 255))
+    card.alpha_composite(glyphs.scatter((w, h), seed=500 + n, colour=(56, 52, 64),
+                                        count=20, glyph_px=int(w * 0.18)))
     d = ImageDraw.Draw(card)
-    d.rounded_rectangle([10, 10, BID_W - 11, BID_H - 11], 18,
-                        outline=(232, 196, 92), width=3)
-    d.text((BID_W // 2, 60), "I BID", font=font(FONT_BOLD, 34),
+    d.text((w // 2, int(h * 0.13)), "I BID", font=font(FONT_BOLD, int(h * 0.085)),
            fill=(232, 196, 92), anchor="mm")
-    text_outlined(d, (BID_W // 2, BID_H // 2 + 20), str(n), font(FONT_BLACK, 190),
-                  (255, 255, 255), (0, 0, 0), width=5)
-    d.text((BID_W // 2, BID_H - 40), "TRICKS" if n != 1 else "TRICK",
-           font=font(FONT_BOLD, 26), fill=(180, 172, 190), anchor="mm")
-    return card.convert("RGB")
+    inked_text(card, (w // 2, int(h * 0.53)), str(n), font(FONT_BLACK, int(h * 0.42)),
+               key_width=max(3, int(w * 0.014)), rough=w * 0.004)
+    d = ImageDraw.Draw(card)
+    d.text((w // 2, int(h * 0.90)), "TRICKS" if n != 1 else "TRICK",
+           font=font(FONT_BOLD, int(h * 0.06)), fill=(170, 162, 182), anchor="mm")
+    return card.resize((BID_W, BID_H), Image.LANCZOS).convert("RGB")
 
 
-def back(w, h, label, tint=(140, 22, 20), sub=None):
-    card = vertical_gradient((w, h), tuple(min(255, int(c * 1.5)) for c in tint),
-                             tuple(int(c * 0.55) for c in tint)).convert("RGBA")
+def back(cw, ch, label, tint, sub=None):
+    """Black back with the glyph field, a flaming mask and crossed chillies."""
+    w, h = cw * SS, ch * SS
+    card = Image.new("RGBA", (w, h), (16, 15, 15, 255))
+    card.alpha_composite(glyphs.scatter((w, h), seed=77, colour=(46, 43, 42),
+                                        count=40, glyph_px=int(w * 0.14)))
+
+    s = int(w * 0.52)
+    cx, cy = (w - s) // 2, int(h * 0.30)
+
+    # flames licking up from behind the top of the mask
+    fh = int(s * 0.72)
+    flame = Image.new("RGBA", (s, fh), (0, 0, 0, 0))
+    fd = ImageDraw.Draw(flame)
+    for col, spread, height in [((228, 62, 28), 0.50, 1.00),
+                                ((244, 142, 26), 0.36, 0.78),
+                                ((250, 206, 62), 0.20, 0.52)]:
+        tongues = 5
+        for t in range(tongues):
+            f = (t - (tongues - 1) / 2) / max(1, (tongues - 1) / 2)   # -1..1
+            base = s * 0.5 + f * s * spread * 0.9
+            tip_h = fh * height * (1.0 - 0.45 * abs(f))
+            bw = s * 0.13 * spread / 0.5
+            fd.polygon([
+                (base - bw, fh),
+                (base - bw * 0.35, fh - tip_h * 0.55),
+                (base + f * bw * 0.9, fh - tip_h),          # tip leans outward
+                (base + bw * 0.35, fh - tip_h * 0.5),
+                (base + bw, fh),
+            ], fill=col + (255,))
+    card.alpha_composite(flame, (cx, cy - fh + int(s * 0.22)))
+
+    # crossed chillies
+    for sign in (-1, 1):
+        cs = int(s * 0.78)
+        pod = Image.new("RGBA", (cs, cs), (0, 0, 0, 0))
+        b = Image.new("L", (cs, cs), 0)
+        glyphs._sil_chili(ImageDraw.Draw(b), cs, random.Random(2))
+        b = glyphs.roughen(b, amount=cs * 0.01)
+        pod.paste(Image.new("RGBA", (cs, cs), CHILI_RED + (255,)), (0, 0), b)
+        st = Image.new("L", (cs, cs), 0)
+        sd = ImageDraw.Draw(st)
+        sd.line([(cs * .52, cs * .13), (cs * .43, cs * .01)], fill=255,
+                width=int(cs * .05))
+        pod.paste(Image.new("RGBA", (cs, cs), LEAF + (255,)), (0, 0), st)
+        # crossed low and splayed outward, behind the chin of the mask
+        pod = pod.rotate(sign * 128, resample=Image.BICUBIC, expand=False)
+        card.alpha_composite(pod, (cx + int(sign * s * 0.30), cy + int(s * 0.46)))
+
+    # mask
+    m = Image.new("L", (s, s), 0)
+    glyphs._sil_mask(ImageDraw.Draw(m), s, random.Random(3))
+    m = glyphs.roughen(m, amount=s * 0.01)
+    face = Image.new("RGBA", (s, s), (0, 0, 0, 0))
+    face.paste(Image.new("RGBA", (s, s), PAPER + (255,)), (0, 0), m)
+    marks = Image.new("L", (s, s), 0)
+    md = ImageDraw.Draw(marks)
+    glyphs._eye(md, (s * .28, s * .30, s * .48, s * .46), random.Random(4), 255)
+    glyphs._eye(md, (s * .52, s * .30, s * .72, s * .46), random.Random(6), 255)
+    glyphs._teeth(md, (s * .30, s * .58, s * .70, s * .74), random.Random(7), 255)
+    glyphs._chevrons(md, (s * .32, s * .14, s * .68, s * .26), random.Random(8), 255)
+    marks = Image.fromarray(
+        np.minimum(np.asarray(marks), np.asarray(m)).astype(np.uint8), "L")
+    face.paste(Image.new("RGBA", (s, s), INK + (255,)), (0, 0), marks)
+    card.alpha_composite(face, (cx, cy))
+
     d = ImageDraw.Draw(card)
-    d.rounded_rectangle([int(w * 0.035), int(h * 0.025), w - int(w * 0.035), h - int(h * 0.025)],
-                        int(w * 0.05), outline=(232, 196, 92), width=max(3, w // 110))
-    draw_chili(card, w // 2, int(h * 0.44), int(h * 0.42), body=(240, 226, 206))
-    d = ImageDraw.Draw(card)
-    d.text((w // 2, int(h * 0.80)), label, font=font(FONT_BLACK, int(h * 0.085)),
-           fill=(240, 226, 206), anchor="mm")
+    d.text((w // 2, int(h * 0.855)), label, font=font(FONT_BLACK, int(h * 0.088)),
+           fill=PAPER, anchor="mm")
     if sub:
-        d.text((w // 2, int(h * 0.885)), sub, font=font(FONT_BOLD, int(h * 0.042)),
-               fill=(232, 196, 92), anchor="mm")
-    return card.convert("RGB")
+        d.text((w // 2, int(h * 0.925)), sub, font=font(FONT_BOLD, int(h * 0.042)),
+               fill=tint, anchor="mm")
+    return card.resize((cw, ch), Image.LANCZOS).convert("RGB")
 
 
 def pili_token():
-    size = 512
-    img = Image.new("RGBA", (size, size), (0, 0, 0, 0))
+    s = 512 * 2
+    img = Image.new("RGBA", (s, s), (0, 0, 0, 0))
     d = ImageDraw.Draw(img)
-    d.ellipse([8, 8, size - 8, size - 8], fill=(250, 244, 232, 255),
-              outline=(140, 20, 20, 255), width=14)
-    draw_chili(img, size // 2, size // 2, int(size * 0.62))
-    return img
+    d.ellipse([8, 8, s - 8, s - 8], fill=(18, 16, 16, 255))
+    img.alpha_composite(glyphs.scatter((s, s), seed=31, colour=(48, 44, 42),
+                                       count=18, glyph_px=int(s * 0.16)))
+    ring = Image.new("L", (s, s), 0)
+    ImageDraw.Draw(ring).ellipse([8, 8, s - 8, s - 8], fill=255)
+    img.putalpha(ring)
+
+    cs = int(s * 0.62)
+    b = Image.new("L", (cs, cs), 0)
+    glyphs._sil_chili(ImageDraw.Draw(b), cs, random.Random(2))
+    b = glyphs.roughen(b, amount=cs * 0.01)
+    pod = Image.new("RGBA", (cs, cs), (0, 0, 0, 0))
+    pod.paste(Image.new("RGBA", (cs, cs), CHILI_RED + (255,)), (0, 0), b)
+    st = Image.new("L", (cs, cs), 0)
+    ImageDraw.Draw(st).line([(cs * .50, cs * .22), (cs * .40, cs * .03)],
+                            fill=255, width=int(cs * .06))
+    pod.paste(Image.new("RGBA", (cs, cs), LEAF + (255,)), (0, 0), st)
+    img.alpha_composite(pod, ((s - cs) // 2, (s - cs) // 2))
+    return img.resize((512, 512), Image.LANCZOS)
 
 
 # --------------------------------------------------------------------------- #
@@ -276,33 +341,41 @@ def build_sheet(images, cols, rows, cw, ch, path):
     return path
 
 
-def generate(missions):
+def generate(missions, progress=True):
     os.makedirs(ASSETS, exist_ok=True)
     out = {}
 
+    def say(msg):
+        if progress:
+            print("  " + msg, flush=True)
+
+    say("55 numbered cards + Joker")
     play = [number_card(v) for v in range(1, 56)] + [joker_card()]
     out["play_face"] = build_sheet(play, 8, 7, CARD_W, CARD_H,
                                    os.path.join(ASSETS, "play_faces.png"))
 
+    say(f"{len(missions)} mission cards")
     miss = [mission_card(m["title"], m["text"], m["cards"], m.get("expert", False))
             for m in missions]
     out["mission_face"] = build_sheet(miss, 6, 6, CARD_W, CARD_H,
                                       os.path.join(ASSETS, "mission_faces.png"))
 
+    say("bet markers")
     bids = [bid_card(n) for n in range(0, 14)]
     out["bid_face"] = build_sheet(bids, 7, 2, BID_W, BID_H,
                                   os.path.join(ASSETS, "bid_faces.png"))
 
+    say("backs and token")
     p = os.path.join(ASSETS, "play_back.png")
-    back(CARD_W, CARD_H, "PILI PILI", (150, 26, 22), "1 - 55").save(p, "PNG", optimize=True)
+    back(CARD_W, CARD_H, "PILI PILI", (232, 196, 92), "1 - 55").save(p, "PNG", optimize=True)
     out["play_back"] = p
 
     p = os.path.join(ASSETS, "mission_back.png")
-    back(CARD_W, CARD_H, "MISSION", (40, 60, 120)).save(p, "PNG", optimize=True)
+    back(CARD_W, CARD_H, "MISSION", (120, 190, 230)).save(p, "PNG", optimize=True)
     out["mission_back"] = p
 
     p = os.path.join(ASSETS, "bid_back.png")
-    back(BID_W, BID_H, "BID", (56, 46, 88)).save(p, "PNG", optimize=True)
+    back(BID_W, BID_H, "BID", (200, 170, 240)).save(p, "PNG", optimize=True)
     out["bid_back"] = p
 
     p = os.path.join(ASSETS, "pili_token.png")
@@ -313,7 +386,6 @@ def generate(missions):
 
 
 if __name__ == "__main__":
-    import json
     with open(os.path.join(HERE, "missions.json"), encoding="utf-8") as fh:
         ms = json.load(fh)["missions"]
     for k, v in generate(ms).items():
