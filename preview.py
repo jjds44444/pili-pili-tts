@@ -19,7 +19,6 @@ def cell(img, i, cols, cw=CW, ch=CH):
 def main(out):
     play = Image.open(os.path.join(A, "play_faces.png"))
     miss = Image.open(os.path.join(A, "mission_faces.png"))
-    bid = Image.open(os.path.join(A, "bid_faces.png"))
 
     cols = 7
     sheet = Image.new("RGB", (CW * cols, CH * 3), (18, 14, 14))
@@ -33,10 +32,14 @@ def main(out):
     extras = Image.new("RGB", (CW * cols, CH), (18, 14, 14))
     extras.paste(Image.open(os.path.join(A, "play_back.png")), (0, 0))
     extras.paste(Image.open(os.path.join(A, "mission_back.png")), (CW, 0))
-    bidc = cell(bid, 3, 7, art.BID_W, art.BID_H).resize((int(CW * 0.8), int(CH * 0.8)))
-    extras.paste(bidc, (int(CW * 2.1), int(CH * 0.1)))
     tok = Image.open(os.path.join(A, "pili_token.png")).convert("RGB").resize((CH - 80, CH - 80))
-    extras.paste(tok, (int(CW * 3.1), 40))
+    extras.paste(tok, (int(CW * 2.1), 40))
+    for j, name in enumerate(("dibber.png", "round_button.png")):
+        im = Image.open(os.path.join(A, name)).convert("RGB")
+        im = im.resize((int(CW * 1.1), int(CW * 1.1 * im.height / im.width)))
+        extras.paste(im, (int(CW * (3.1 + j * 1.3)), int(CH * 0.3)))
+    dl = Image.open(os.path.join(A, "dealer.png")).convert("RGB").resize((CH - 200, CH - 200))
+    extras.paste(dl, (int(CW * 5.8), 100))
 
     full = Image.new("RGB", (CW * cols, CH * 4), (18, 14, 14))
     full.paste(sheet, (0, 0))

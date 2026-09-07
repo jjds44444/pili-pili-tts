@@ -305,20 +305,56 @@ def mission_card(title, body, cards, expert=False):
     return card.resize((CARD_W, CARD_H), Image.LANCZOS).convert("RGB")
 
 
-def bid_card(n):
-    w, h = BID_W * SS, BID_H * SS
-    card = Image.new("RGBA", (w, h), (32, 30, 38, 255))
-    card.alpha_composite(glyphs.scatter((w, h), seed=500 + n, colour=(56, 52, 64),
-                                        count=20, glyph_px=int(w * 0.18)))
-    d = ImageDraw.Draw(card)
-    d.text((w // 2, int(h * 0.13)), "I BID", font=font(FONT_BOLD, int(h * 0.085)),
-           fill=(232, 196, 92), anchor="mm")
-    inked_text(card, (w // 2, int(h * 0.53)), str(n), font(FONT_BLACK, int(h * 0.42)),
-               key_width=max(3, int(w * 0.014)), rough=w * 0.004)
-    d = ImageDraw.Draw(card)
-    d.text((w // 2, int(h * 0.90)), "TRICKS" if n != 1 else "TRICK",
-           font=font(FONT_BOLD, int(h * 0.06)), fill=(170, 162, 182), anchor="mm")
-    return card.resize((BID_W, BID_H), Image.LANCZOS).convert("RGB")
+def plaque(cw, ch, title, ground=(20, 18, 18), accent=(232, 196, 92),
+           chilli=False, title_frac=0.30):
+    """Dark tile used for the in-world control objects: dibbers, round button."""
+    w, h = cw * SS, ch * SS
+    tile = Image.new("RGBA", (w, h), ground + (255,))
+    tile.alpha_composite(glyphs.scatter((w, h), seed=abs(hash(title)) % 7777,
+                                        colour=shade(ground, 2.4),
+                                        count=26, glyph_px=int(min(w, h) * 0.30)))
+    d = ImageDraw.Draw(tile)
+    d.rounded_rectangle([int(w * .012), int(h * .022), w - int(w * .012), h - int(h * .022)],
+                        int(min(w, h) * .09), outline=accent, width=max(3, int(min(w, h) * .022)))
+
+    if chilli:
+        s = int(h * 0.52)
+        pod = Image.new("RGBA", (s, s), (0, 0, 0, 0))
+        b = Image.new("L", (s, s), 0)
+        glyphs._sil_chili(ImageDraw.Draw(b), s, random.Random(2))
+        b = glyphs.roughen(b, amount=s * 0.012)
+        pod.paste(Image.new("RGBA", (s, s), CHILI_RED + (255,)), (0, 0), b)
+        st = Image.new("L", (s, s), 0)
+        ImageDraw.Draw(st).line([(s * .52, s * .13), (s * .43, s * .01)],
+                                fill=255, width=max(2, int(s * .05)))
+        pod.paste(Image.new("RGBA", (s, s), LEAF + (255,)), (0, 0), st)
+        tile.alpha_composite(pod, (int(w * .07), (h - s) // 2))
+        tx = int(w * .58)
+    else:
+        tx = w // 2
+
+    fnt = fit_font(FONT_BLACK, title, w * (0.62 if chilli else 0.80), h * title_frac)
+    d.text((tx, h // 2), title, font=fnt, fill=PAPER, anchor="mm")
+    return tile.resize((cw, ch), Image.LANCZOS).convert("RGB")
+
+
+def dealer_token():
+    s = 512
+    img = Image.new("RGBA", (s, s), (0, 0, 0, 0))
+    ring = Image.new("L", (s, s), 0)
+    ImageDraw.Draw(ring).ellipse([6, 6, s - 6, s - 6], fill=255)
+    body = Image.new("RGBA", (s, s), (0, 0, 0, 0))
+    body.paste(Image.new("RGBA", (s, s), (232, 196, 92, 255)), (0, 0), ring)
+    body.alpha_composite(glyphs.scatter((s, s), seed=88, colour=(210, 172, 70),
+                                        count=16, glyph_px=int(s * 0.20)))
+    body.putalpha(ring)
+    d = ImageDraw.Draw(body)
+    d.ellipse([16, 16, s - 16, s - 16], outline=INK, width=12)
+    d.text((s // 2, int(s * 0.42)), "DEALER", font=font(FONT_BLACK, int(s * 0.15)),
+           fill=INK, anchor="mm")
+    d.text((s // 2, int(s * 0.60)), "bets & leads", font=font(FONT_BOLD, int(s * 0.075)),
+           fill=(90, 74, 40), anchor="mm")
+    return body
 
 
 def back(cw, ch, label, tint, sub=None):
@@ -452,10 +488,19 @@ def generate(missions, progress=True):
     out["mission_face"] = build_sheet(miss, 6, 6, CARD_W, CARD_H,
                                       os.path.join(ASSETS, "mission_faces.png"))
 
-    say("bet markers")
-    bids = [bid_card(n) for n in range(0, 14)]
-    out["bid_face"] = build_sheet(bids, 7, 2, BID_W, BID_H,
-                                  os.path.join(ASSETS, "bid_faces.png"))
+    say("in-world controls")
+    p = os.path.join(ASSETS, "dibber.png")
+    plaque(600, 300, "BID", title_frac=0.34).save(p, "PNG", optimize=True)
+    out["dibber"] = p
+
+    p = os.path.join(ASSETS, "round_button.png")
+    plaque(700, 300, "NEXT ROUND", ground=(28, 14, 12), accent=CHILI_RED,
+           chilli=True, title_frac=0.26).save(p, "PNG", optimize=True)
+    out["button"] = p
+
+    p = os.path.join(ASSETS, "dealer.png")
+    dealer_token().save(p, "PNG", optimize=True)
+    out["dealer"] = p
 
     say("backs and token")
     p = os.path.join(ASSETS, "play_back.png")
@@ -465,10 +510,6 @@ def generate(missions, progress=True):
     p = os.path.join(ASSETS, "mission_back.png")
     back(CARD_W, CARD_H, "MISSION", (120, 190, 230)).save(p, "PNG", optimize=True)
     out["mission_back"] = p
-
-    p = os.path.join(ASSETS, "bid_back.png")
-    back(BID_W, BID_H, "BID", (200, 170, 240)).save(p, "PNG", optimize=True)
-    out["bid_back"] = p
 
     p = os.path.join(ASSETS, "pili_token.png")
     pili_token().save(p, "PNG", optimize=True)

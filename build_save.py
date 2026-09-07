@@ -1,12 +1,11 @@
 """Build the Pili Pili Tabletop Simulator save file.
 
-    python build_save.py                 # render art + install into your TTS Saves folder
-    python build_save.py --out .         # write everything here instead
-    python build_save.py --base-url URL  # point the images at a web host (for multiplayer)
+    python build_save.py              # render art + install into your TTS Saves folder
+    python build_save.py --skip-art   # reuse assets/, rebuild the save only
+    python build_save.py --local      # host-only file:/// images, for fast art iteration
+    python build_save.py --out DIR    # write somewhere else
 
-Local file:/// image paths only load for the person hosting the table. If you want
-other people to see the cards, upload the contents of the assets folder somewhere
-public (Steam Cloud, imgur, a GitHub raw URL) and rerun with --base-url.
+Images are served from the repo by default, so everyone at the table sees them.
 """
 import argparse
 import json
@@ -28,18 +27,19 @@ DEFAULT_BASE_URL = "https://raw.githubusercontent.com/jjds44444/pili-pili-tts/ma
 
 import art  # noqa: E402  (lives next to this script)
 
-COLORS = ["Red", "Orange", "Yellow", "Green", "Teal", "Blue", "Purple", "White"]
-COLOR_HEX = {
-    "Red": "#e04a3c", "Orange": "#e08a2c", "Yellow": "#d8cc44", "Green": "#4fb35a",
-    "Teal": "#3fb6a8", "Blue": "#4a86e8", "Purple": "#9a63d0", "White": "#e8e4dc",
-}
 
-POS_PLAY = (-7.0, 1.6, 0.0)
-POS_MISSION = (7.0, 1.6, 0.0)
-POS_REVEAL = (7.0, 1.6, -5.5)
-POS_DISCARD = (11.5, 1.6, 0.0)
-POS_BIDS = (-11.5, 1.6, 0.0)
-POS_PILIS = (-7.0, 1.6, 6.0)
+POS_PLAY = (-6.2, 1.6, -2.8)
+POS_ASIDE = (-6.2, 1.6, 2.8)
+POS_MISSION = (6.2, 1.6, 2.8)
+POS_REVEAL = (6.2, 1.6, -2.8)
+POS_DISCARD = (0.0, 1.6, -3.4)
+POS_BUTTON = (0.0, 1.3, 3.4)
+POS_PILIS = (-11.0, 1.6, -5.0)
+
+# how far out from the middle each per-seat object sits, as a fraction of the
+# seat's own position, plus a sideways nudge so dibber and Pilis don't overlap
+F_DIBBER, F_TRICKS = 0.82, 0.55
+SIDE_OFFSET = 2.9
 
 # Table_Poker's playing surface, roughly, in TTS units.
 TABLE_A, TABLE_B = 17.0, 9.5
@@ -144,6 +144,67 @@ def hand_zone(color, fx, fz):
     return zone
 
 
+def seat_frame(fx, fz):
+    """Seat position plus its inward-facing rotation and sideways axis."""
+    x, z = fx * TABLE_A, fz * TABLE_B
+    rot_y = math.degrees(math.atan2(-x, -z)) % 360.0
+    n = math.hypot(x, z) or 1.0
+    inward = (-x / n, -z / n)
+    right = (-inward[1], inward[0])
+    return (x, z), rot_y, right
+
+
+def custom_tile(image_url, pos, rot_y, nickname, gm_notes, scale, locked=True):
+    return dict(BASE_FLAGS, **{
+        "GUID": guid(), "Name": "Custom_Tile",
+        "Transform": {
+            "posX": pos[0], "posY": pos[1], "posZ": pos[2],
+            "rotX": 0.0, "rotY": rot_y, "rotZ": 0.0,
+            "scaleX": scale, "scaleY": 1.0, "scaleZ": scale,
+        },
+        "Nickname": nickname, "Description": "", "GMNotes": gm_notes,
+        "Locked": locked, "Hands": False, "Grid": False, "Snap": False,
+        "CustomImage": {
+            "ImageURL": image_url, "ImageSecondaryURL": image_url,
+            "ImageScalar": 1.0, "WidthScale": 0.0,
+            "CustomTile": {"Type": 3, "Thickness": 0.2,
+                           "Stackable": False, "Stretch": True},
+        },
+        "LuaScript": "", "LuaScriptState": "", "XmlUI": "",
+    })
+
+
+def scripting_zone(pos, rot_y, gm_notes, size=(3.4, 3.0, 3.4)):
+    return dict(BASE_FLAGS, **{
+        "GUID": guid(), "Name": "ScriptingTrigger",
+        "Transform": {
+            "posX": pos[0], "posY": pos[1], "posZ": pos[2],
+            "rotX": 0.0, "rotY": rot_y, "rotZ": 0.0,
+            "scaleX": size[0], "scaleY": size[1], "scaleZ": size[2],
+        },
+        "Nickname": "", "Description": "", "GMNotes": gm_notes,
+        "Locked": False, "Hands": False, "Grid": False, "Snap": False,
+        "Tooltip": False,
+    })
+
+
+def dealer_marker(image_url, pos):
+    return dict(BASE_FLAGS, **{
+        "GUID": guid(), "Name": "Custom_Token",
+        "Transform": transform(pos, (0, 0, 0), 0.9),
+        "Nickname": "Dealer", "Description":
+            "Bets start here and this seat leads the first trick. Passes left each round.",
+        "GMNotes": "PILI:DEALER", "Hands": False,
+        "CustomImage": {
+            "ImageURL": image_url, "ImageSecondaryURL": image_url,
+            "ImageScalar": 1.0, "WidthScale": 0.0,
+            "CustomToken": {"Thickness": 0.2, "MergeDistancePixels": 15.0,
+                            "StandUp": False, "Stackable": False},
+        },
+        "LuaScript": "", "LuaScriptState": "", "XmlUI": "",
+    })
+
+
 def pili_bag(image_url):
     token = dict(BASE_FLAGS, **{
         "GUID": guid(), "Name": "Custom_Token",
@@ -167,107 +228,55 @@ def pili_bag(image_url):
         "GUID": guid(), "Name": "Infinite_Bag",
         "Transform": transform(POS_PILIS, (0, 0, 0), 1.4),
         "Nickname": "Pilis", "Description": "Drag out a Pili. 6 ends the game.",
-        "GMNotes": "", "MaterialIndex": -1, "MeshIndex": -1,
+        "GMNotes": "PILI:BAG", "MaterialIndex": -1, "MeshIndex": -1,
         "Hands": False,
         "ContainedObjects": [token],
         "LuaScript": "", "LuaScriptState": "", "XmlUI": "",
     })
 
 
-def build_ui():
-    rows = []
-    for c in COLORS:
-        rows.append(f"""
-      <HorizontalLayout id="row_{c}" preferredHeight="26" spacing="3" active="false">
-        <Text preferredWidth="62" fontSize="13" fontStyle="Bold" color="{COLOR_HEX[c]}"
-              alignment="MiddleLeft">{c}</Text>
-        <Button preferredWidth="24" onClick="bidDown({c})">-</Button>
-        <Text id="bid_{c}" preferredWidth="42" alignment="MiddleCenter" color="#e8c45c">-</Text>
-        <Button preferredWidth="24" onClick="bidUp({c})">+</Button>
-        <Text preferredWidth="10" color="#6a5a55" alignment="MiddleCenter">|</Text>
-        <Button preferredWidth="24" onClick="piliDown({c})">-</Button>
-        <Text id="pili_{c}" preferredWidth="42" alignment="MiddleCenter" color="#f0a090">0</Text>
-        <Button preferredWidth="24" onClick="piliUp({c})">+</Button>
-      </HorizontalLayout>""")
-
-    return f"""<Defaults>
-  <Button color="#8c1414" textColor="#f7f0e4" fontSize="14" fontStyle="Bold"/>
-  <Text color="#e6ded2" fontSize="13"/>
-</Defaults>
-
-<!-- Upper RIGHT: TTS puts its own toolbar down the left edge and the player
-     /voice list over the top-left, which the panel used to collide with. -->
-<Panel id="piliMain" rectAlignment="UpperRight" offsetXY="-14 -14"
-       width="320" height="440" color="#160f0ef2"
-       outlineSize="2 2" outline="#e8c45c">
-  <VerticalLayout padding="12 12 10 12" spacing="5">
-
-    <Text fontSize="22" fontStyle="Bold" color="#e8c45c"
-          alignment="MiddleCenter" preferredHeight="30">PILI PILI</Text>
-
-    <HorizontalLayout preferredHeight="32" spacing="6">
-      <Button onClick="uiDrawMission">Mission</Button>
-      <Button onClick="uiDeal">Deal</Button>
-      <Button onClick="uiReveal">Reveal Bets</Button>
-    </HorizontalLayout>
-
-    <Text id="status" preferredHeight="34" fontSize="12" color="#c8bcae"
-          alignment="MiddleCenter">Draw a mission to begin.</Text>
-
-    <HorizontalLayout preferredHeight="20" spacing="3">
-      <Text preferredWidth="62" fontSize="11" color="#8a7a72" alignment="MiddleLeft">SEAT</Text>
-      <Text preferredWidth="90" fontSize="11" color="#8a7a72" alignment="MiddleCenter">BET</Text>
-      <Text preferredWidth="10"/>
-      <Text preferredWidth="90" fontSize="11" color="#8a7a72" alignment="MiddleCenter">PILIS</Text>
-    </HorizontalLayout>
-{''.join(rows)}
-
-    <Text id="dealtInfo" preferredHeight="20" fontSize="11" color="#8a7a72"
-          alignment="MiddleCenter">no hand dealt</Text>
-
-    <HorizontalLayout preferredHeight="30" spacing="6">
-      <Button onClick="uiEndRound" color="#3a2a28">End Round</Button>
-      <Button onClick="uiNewGame" color="#3a2a28">New Game</Button>
-    </HorizontalLayout>
-
-  </VerticalLayout>
-</Panel>
-"""
-
-
 RULES = """PILI PILI - how a round runs
+
+Everything is on the table. The chilli button in the middle runs the round;
+the dibber in front of you sets your bet.
 
 Guess how many tricks you will win, then win exactly that many.
 
-1. REVEAL A MISSION
-   Press [Mission]. The card that turns over sets the round's special rule and
-   prints, bottom-left, how many numbered cards each player gets.
+1. PRESS THE CHILLI
+   The NEXT ROUND button scores the round just finished, sweeps every card back,
+   reshuffles, flips a new Mission and deals what it prints. Leftovers go face
+   down on the SET ASIDE spot - still in play for missions that draw a card.
+   Press it once at the start to begin.
 
-2. DEAL
-   Press [Deal]. Leftover cards stay face down beside the deck, out of play.
+2. BET
+   Starting with the DEALER (gold marker) and going round, set your bet on the
+   dibber in front of you with - and +. Bets are open - everyone sees them.
+   The bets must NOT total the number of cards dealt to each player, so there is
+   always at least one loser. The last person to bet cannot choose the number
+   that would make them match, and their dibber will refuse it.
 
-3. BET
-   Starting with the dealer, everyone bets how many tricks they will take.
-   Use the -/+ next to your colour, then press [Reveal Bets].
-   The bets must NOT add up to the number of cards dealt to each player -
-   there always has to be at least one loser. If the last bidder would make the
-   totals match, they must pick a different number. The panel flags it if they don't.
+3. PLAY TRICKS
+   The dealer leads. Everyone plays one card to the middle. Highest number takes
+   the trick - no suits, only the number. The Joker takes any value 0 to 56,
+   declared as you play it.
 
-4. PLAY TRICKS
-   The dealer leads. Everyone plays one card. Highest number takes the trick
-   and leads the next one. There are no suits - only the number matters.
-   The Joker takes any value from 0 to 56, chosen as you play it.
+   PUT THE TRICKS YOU WIN IN YOUR OWN PILE, on the mat in front of you. That is
+   how the button works out what you scored, so keep them there until the round
+   is scored.
 
-5. PILIS
-   Take 1 Pili for every trick you are away from your bet. Exactly right = none.
-   Bet 1 and win 3? That is 2 Pilis. Use the -/+ in the panel, or drag physical
-   chillies out of the Pili bag.
+4. NEXT ROUND
+   Press the chilli again. It counts each pile, works out tricks won, compares it
+   to your bet and drops a Pili in your tray for every trick you were out by.
+   Exactly right costs nothing.
 
-6. NEXT ROUND
-   Press [End Round] to sweep the cards back and reshuffle, then draw a new mission.
-   The moment someone hits 6 Pilis the game stops and the FEWEST Pilis wins.
+   Missions that change the scoring (Cool Down, First & Last, Cursed Cards,
+   Shared Burn) are on you - just drag chillies in or out of your tray to match.
 
-FIRST GAME? Skip the missions entirely, deal 5 cards each, and go straight to betting."""
+5. WINNING
+   The moment somebody has 6 Pilis in their tray the game ends, and whoever has
+   the FEWEST wins.
+
+FIRST GAME? Ignore the Mission deck, deal 5 each and go straight to betting."""
 
 CREDITS = """Pili Pili is designed by Ben, Martin & JB and published by ATM Gaming.
 This is an unofficial fan-made Tabletop Simulator implementation - buy the real
@@ -285,9 +294,30 @@ reconstruction. Edit missions.json and rerun build_save.py to correct them."""
 def build(missions, urls, out_dir):
     objects = []
 
-    # seats
+    # seats: hand zone, bid dibber, trick pile zone, Pili zone
     for colour, fx, fz in SEATS:
         objects.append(hand_zone(colour, fx, fz))
+        (sx, sz), rot_y, right = seat_frame(fx, fz)
+
+        dx, dz = sx * F_DIBBER, sz * F_DIBBER
+        objects.append(custom_tile(
+            urls["dibber"],
+            (dx + right[0] * SIDE_OFFSET, 1.3, dz + right[1] * SIDE_OFFSET),
+            rot_y, f"{colour} bid", f"PILI:DIBBER:{colour}", scale=1.5))
+
+        objects.append(scripting_zone(
+            (dx - right[0] * SIDE_OFFSET, 2.0, dz - right[1] * SIDE_OFFSET),
+            rot_y, f"PILI:PILIS:{colour}", size=(3.2, 3.0, 3.2)))
+
+        objects.append(scripting_zone(
+            (sx * F_TRICKS, 2.0, sz * F_TRICKS), rot_y,
+            f"PILI:TRICKS:{colour}", size=(3.8, 3.0, 3.4)))
+
+    objects.append(custom_tile(urls["button"], POS_BUTTON, 0.0,
+                               "Next Round", "PILI:BUTTON", scale=2.0))
+    first_seat = seat_frame(SEATS[0][1], SEATS[0][2])[0]
+    objects.append(dealer_marker(
+        urls["dealer"], (first_seat[0] * 0.90, 1.6, first_seat[1] * 0.90)))
 
     # play deck: 1-55 plus the Joker
     cd_play = custom_deck(urls["play_face"], urls["play_back"], 8, 7)
@@ -312,26 +342,20 @@ def build(missions, urls, out_dir):
                                POS_MISSION, (0, 180, 180)))
     objects.append(deck(2, miss_cards, "Missions", "PILI:MISSION", cd_miss, POS_MISSION))
 
-    # optional physical bet markers
-    cd_bid = custom_deck(urls["bid_face"], urls["bid_back"], 7, 2)
-    bid_cards = [card(3, i, str(i), "Optional physical bet marker.", "PILI:BID",
-                      cd_bid, POS_BIDS, (0, 180, 180)) for i in range(14)]
-    objects.append(deck(3, bid_cards, "Bet Markers (optional)", "PILI:BID",
-                        cd_bid, POS_BIDS))
-
     objects.append(pili_bag(urls["pili"]))
 
-    # snap points for played cards, ringed around the middle
+    # snap points for played cards, ringed tightly around the middle
     snaps = []
-    for i in range(len(COLORS)):
-        th = math.radians(360.0 * i / len(COLORS))
+    for i in range(len(SEATS)):
+        th = math.radians(360.0 * i / len(SEATS))
         snaps.append({
-            "Position": {"x": -4.2 * math.sin(th), "y": 1.02, "z": -4.2 * math.cos(th)},
-            "Rotation": {"x": 0.0, "y": 360.0 * i / len(COLORS), "z": 0.0},
+            "Position": {"x": -2.4 * math.sin(th), "y": 1.02, "z": -2.4 * math.cos(th)},
+            "Rotation": {"x": 0.0, "y": 360.0 * i / len(SEATS), "z": 0.0},
             "Tags": [],
         })
-    snaps.append({"Position": {"x": POS_REVEAL[0], "y": 1.02, "z": POS_REVEAL[2]},
-                  "Rotation": {"x": 0.0, "y": 0.0, "z": 0.0}, "Tags": []})
+    for spot in (POS_REVEAL, POS_ASIDE):
+        snaps.append({"Position": {"x": spot[0], "y": 1.02, "z": spot[2]},
+                      "Rotation": {"x": 0.0, "y": 0.0, "z": 0.0}, "Tags": []})
 
     with open(os.path.join(HERE, "global.lua"), encoding="utf-8") as fh:
         lua = fh.read()
@@ -356,8 +380,12 @@ def build(missions, urls, out_dir):
             "1": {"title": "Credits", "body": CREDITS, "color": "Grey",
                   "visibleColor": {"r": 0.5, "g": 0.5, "b": 0.5}, "id": 1},
         },
-        "Turns": {"Enable": False, "Type": 0, "TurnOrder": [], "Reverse": False,
-                  "SkipEmpty": False, "DisableInteractions": False,
+        # Custom turn order matching the seating, so "starting with the dealer"
+        # is a real thing the script can reason about - it is what makes the
+        # last-bidder rule enforceable.
+        "Turns": {"Enable": True, "Type": 2,
+                  "TurnOrder": [c for c, _, _ in SEATS], "Reverse": False,
+                  "SkipEmpty": True, "DisableInteractions": False,
                   "PassTurns": True, "TurnColor": ""},
         "Hands": {"Enable": True, "DisableUnused": False, "Hiding": "Default"},
         "ComponentTags": {"labels": []},
@@ -375,7 +403,7 @@ def build(missions, urls, out_dir):
         "DecalPallet": [],
         "LuaScript": lua,
         "LuaScriptState": "",
-        "XmlUI": build_ui(),
+        "XmlUI": "",          # everything lives on the table now
         "ObjectStates": objects,
     }
 
@@ -413,9 +441,9 @@ def main():
 
     if args.skip_art:
         names = {"play_face": "play_faces.png", "mission_face": "mission_faces.png",
-                 "bid_face": "bid_faces.png", "play_back": "play_back.png",
-                 "mission_back": "mission_back.png", "bid_back": "bid_back.png",
-                 "pili": "pili_token.png"}
+                 "play_back": "play_back.png", "mission_back": "mission_back.png",
+                 "pili": "pili_token.png", "dibber": "dibber.png",
+                 "button": "round_button.png", "dealer": "dealer.png"}
         files = {k: os.path.join(art.ASSETS, v) for k, v in names.items()}
     else:
         print("rendering art ...")

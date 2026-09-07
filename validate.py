@@ -45,7 +45,7 @@ check("8 hand zones", len(zones) == 8)
 check("hand zones have distinct colours", len({z["FogColor"] for z in zones}) == len(zones))
 
 print("\ndecks")
-expected = {"Numbered Cards": 56, "Missions": 36, "Bet Markers (optional)": 14}
+expected = {"Numbered Cards": 56, "Missions": 36}
 seen = {}
 for o in save["ObjectStates"]:
     if o["Name"] != "DeckCustom":
@@ -99,26 +99,53 @@ for u in sorted(urls):
         except Exception as e:                                  # noqa: BLE001
             check(f"  {name} reachable", False, f"{type(e).__name__}: {e}")
 
-print("\nscripting")
+print("\nlua")
 try:
-    ET.fromstring("<root>" + save["XmlUI"] + "</root>")
-    check("XmlUI is well-formed", True)
-except ET.ParseError as e:
-    check("XmlUI is well-formed", False, str(e))
+    import lupa
+    try:
+        lupa.LuaRuntime().compile(save["LuaScript"])
+        check("  table script compiles", True)
+    except Exception as e:                                      # noqa: BLE001
+        check("  table script compiles", False, str(e))
+except ImportError:
+    print("  skipped (pip install lupa to syntax-check the table script)")
 
+print("\nin-world controls")
+seats = [o["FogColor"] for o in save["ObjectStates"] if o["Name"] == "HandTrigger"]
+notes = {}
+for o in save["ObjectStates"]:
+    n = o.get("GMNotes", "")
+    if n.startswith("PILI:"):
+        notes.setdefault(n, 0)
+        notes[n] += 1
+
+for seat in seats:
+    for pre in ("PILI:DIBBER:", "PILI:TRICKS:", "PILI:PILIS:"):
+        check(f"  {pre}{seat}", notes.get(pre + seat) == 1)
+for single in ("PILI:BUTTON", "PILI:DEALER", "PILI:BAG"):
+    check(f"  exactly one {single}", notes.get(single) == 1)
+
+check("turn system enabled", save["Turns"]["Enable"] is True)
+check("turn order covers every seat",
+      sorted(save["Turns"]["TurnOrder"]) == sorted(seats))
+check("no leftover floating UI", save["XmlUI"].strip() == "")
+
+print("\nscripting")
 lua = save["LuaScript"]
-handlers = set(re.findall(r'onClick="([A-Za-z_]+)', save["XmlUI"]))
-for h in sorted(handlers):
-    check(f"  Lua defines {h}()", re.search(r"function\s+" + h + r"\s*\(", lua) is not None)
+# every click_function named in the script must actually exist in it
+for fn in sorted(set(re.findall(r'click_function\s*=\s*"([A-Za-z_]+)"', lua))):
+    check(f"  Lua defines {fn}()",
+          re.search(r"function\s+" + fn + r"\s*\(", lua) is not None)
+for fn in ("nextRound", "bidUp", "bidDown", "scoreRound", "passDealer"):
+    check(f"  Lua defines {fn}()",
+          re.search(r"function\s+" + fn + r"\s*\(", lua) is not None)
 
-ui_ids = set(re.findall(r'id="([A-Za-z_0-9]+)"', save["XmlUI"]))
-for ref in sorted(set(re.findall(r'UI\.set\w+\("([A-Za-z_]+)"', lua))):
-    if "_" in ref:
-        continue
-    check(f"  UI id '{ref}' exists in XmlUI", ref in ui_ids)
-for c in ["Red", "Orange", "Yellow", "Green", "Teal", "Blue", "Purple", "White"]:
-    for pre in ["row_", "bid_", "pili_"]:
-        check(f"  UI id '{pre}{c}' exists", pre + c in ui_ids)
+# tags the script looks for must match the tags the save actually writes
+for tag in ("PILI:PLAY", "PILI:MISSION", "PILI:TOKEN"):
+    check(f"  tag {tag} used by both", tag in lua and any(
+        tag == o.get("GMNotes") or any(c.get("GMNotes") == tag
+                                       for c in o.get("ContainedObjects", []))
+        for o in save["ObjectStates"]))
 
 print("\nmission deal counts")
 miss = next(o for o in save["ObjectStates"] if o["Nickname"] == "Missions")
