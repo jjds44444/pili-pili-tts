@@ -10,6 +10,7 @@ public (Steam Cloud, imgur, a GitHub raw URL) and rerun with --base-url.
 """
 import argparse
 import json
+import math
 import os
 import random
 import shutil
@@ -33,7 +34,25 @@ POS_REVEAL = (7.0, 1.6, -5.5)
 POS_DISCARD = (11.5, 1.6, 0.0)
 POS_BIDS = (-11.5, 1.6, 0.0)
 POS_PILIS = (-7.0, 1.6, 6.0)
-SEAT_RADIUS = 16.0
+
+# Table_Poker's playing surface, roughly, in TTS units.
+TABLE_A, TABLE_B = 17.0, 9.5
+
+# Where each seat sits on that oval, as fractions of (TABLE_A, TABLE_B),
+# and which colour is in it. THIS ORDER MUST MATCH THE TABLE'S OWN SEATS -
+# TTS assigns colours to a built-in table's seats itself, and a zone only
+# works if it is parked at the seat of the colour it is tinted with. Sit in
+# each colour and check the nameplates, then reorder this list to match.
+SEATS = [
+    ("White",  0.00,  1.00),   # bottom centre
+    ("Red",    0.58,  1.00),   # bottom right
+    ("Orange", 1.00,  0.00),   # right end
+    ("Yellow", 0.58, -1.00),   # top right
+    ("Green",  0.00, -1.00),   # top centre
+    ("Teal",  -0.58, -1.00),   # top left
+    ("Blue",  -1.00,  0.00),   # left end
+    ("Purple", -0.58, 1.00),   # bottom left
+]
 
 _used_guids = set()
 
@@ -96,23 +115,27 @@ def deck(deck_id, cards, nickname, gm_notes, cd, pos, rot=(0, 180, 180)):
     })
 
 
-def hand_zone(color, index, total):
-    import math
-    theta = math.radians(360.0 * index / total)
-    pos = (-SEAT_RADIUS * math.sin(theta), 2.0, -SEAT_RADIUS * math.cos(theta))
-    z = dict(BASE_FLAGS)
-    z.update({
+def hand_zone(color, fx, fz):
+    """Hand zone at (fx, fz) as a fraction of the table's half-width/depth.
+
+    Table_Poker is an oval, so an evenly-spaced circle of zones does not land
+    on its seats - they run along the two long sides plus one at each end.
+    """
+    x, z = fx * TABLE_A, fz * TABLE_B
+    rot_y = math.degrees(math.atan2(-x, -z)) % 360.0   # face the middle
+    zone = dict(BASE_FLAGS)
+    zone.update({
         "GUID": guid(), "Name": "HandTrigger",
         "Transform": {
-            "posX": pos[0], "posY": pos[1], "posZ": pos[2],
-            "rotX": 0.0, "rotY": 360.0 * index / total, "rotZ": 0.0,
-            "scaleX": 12.0, "scaleY": 5.0, "scaleZ": 4.0,
+            "posX": x, "posY": 2.0, "posZ": z,
+            "rotX": 0.0, "rotY": rot_y, "rotZ": 0.0,
+            "scaleX": 11.0, "scaleY": 5.0, "scaleZ": 4.0,
         },
         "Nickname": "", "Description": "", "GMNotes": "",
         "FogColor": color,
         "Hands": False, "Tooltip": True,
     })
-    return z
+    return zone
 
 
 def pili_bag(image_url):
@@ -121,12 +144,15 @@ def pili_bag(image_url):
         "Transform": transform((POS_PILIS[0], POS_PILIS[1] + 1, POS_PILIS[2]), (0, 0, 0), 0.55),
         "Nickname": "Pili", "Description": "One trick off your bet = one Pili.",
         "GMNotes": "PILI:TOKEN",
+        # Stackable tokens get a generated quantity face on the reverse, which
+        # with no ImageSecondaryURL renders as a broken "2" side. Give the back
+        # the same art and drop stacking - the panel counts Pilis anyway.
         "CustomImage": {
-            "ImageURL": image_url, "ImageSecondaryURL": "",
+            "ImageURL": image_url, "ImageSecondaryURL": image_url,
             "ImageScalar": 1.0, "WidthScale": 0.0,
             "CustomToken": {
                 "Thickness": 0.15, "MergeDistancePixels": 15.0,
-                "StandUp": False, "Stackable": True,
+                "StandUp": False, "Stackable": False,
             },
         },
         "LuaScript": "", "LuaScriptState": "", "XmlUI": "",
@@ -163,7 +189,9 @@ def build_ui():
   <Text color="#e6ded2" fontSize="13"/>
 </Defaults>
 
-<Panel id="piliMain" rectAlignment="UpperLeft" offsetXY="14 -14"
+<!-- Upper RIGHT: TTS puts its own toolbar down the left edge and the player
+     /voice list over the top-left, which the panel used to collide with. -->
+<Panel id="piliMain" rectAlignment="UpperRight" offsetXY="-14 -14"
        width="320" height="440" color="#160f0ef2"
        outlineSize="2 2" outline="#e8c45c">
   <VerticalLayout padding="12 12 10 12" spacing="5">
@@ -252,8 +280,8 @@ def build(missions, urls, out_dir):
     objects = []
 
     # seats
-    for i, c in enumerate(COLORS):
-        objects.append(hand_zone(c, i, len(COLORS)))
+    for colour, fx, fz in SEATS:
+        objects.append(hand_zone(colour, fx, fz))
 
     # play deck: 1-55 plus the Joker
     cd_play = custom_deck(urls["play_face"], urls["play_back"], 8, 7)
@@ -288,7 +316,6 @@ def build(missions, urls, out_dir):
     objects.append(pili_bag(urls["pili"]))
 
     # snap points for played cards, ringed around the middle
-    import math
     snaps = []
     for i in range(len(COLORS)):
         th = math.radians(360.0 * i / len(COLORS))
