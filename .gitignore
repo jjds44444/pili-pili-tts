@@ -1,0 +1,10 @@
+__pycache__/
+*.py[cod]
+
+# build output when using --out .
+PiliPili.json
+PiliPili_assets/
+out/
+
+# generated contact sheet
+preview.png
