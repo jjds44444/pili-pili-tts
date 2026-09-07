@@ -502,6 +502,17 @@ def generate(missions, progress=True):
     dealer_token().save(p, "PNG", optimize=True)
     out["dealer"] = p
 
+    # mats are backdrops, so they stay quiet: dark, thin border, small type
+    p = os.path.join(ASSETS, "mat_tricks.png")
+    plaque(700, 500, "TRICKS WON", ground=(24, 23, 22), accent=(74, 70, 66),
+           title_frac=0.11).save(p, "PNG", optimize=True)
+    out["mat"] = p
+
+    p = os.path.join(ASSETS, "mat_pilis.png")
+    plaque(500, 500, "PILIS", ground=(30, 20, 19), accent=(96, 44, 40),
+           title_frac=0.13).save(p, "PNG", optimize=True)
+    out["tray"] = p
+
     say("backs and token")
     p = os.path.join(ASSETS, "play_back.png")
     back(CARD_W, CARD_H, "PILI PILI", (232, 196, 92), "1 - 55").save(p, "PNG", optimize=True)

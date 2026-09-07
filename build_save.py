@@ -301,7 +301,10 @@ reconstruction. Edit missions.json and rerun build_save.py to correct them."""
 def build(missions, urls, out_dir):
     objects = []
 
-    # seats: hand zone, bid dibber, trick pile zone, Pili zone
+    # Seats. Everything except the hand zone is parked here and then moved into
+    # place by layoutTable() at load, measured off the hand zones - so the hand
+    # zone is the single source of truth for where a seat is, and correcting
+    # SEATS re-lays the whole table automatically.
     for colour, fx, fz in SEATS:
         objects.append(hand_zone(colour, fx, fz))
         (sx, sz), rot_y, right = seat_frame(fx, fz)
@@ -310,15 +313,22 @@ def build(missions, urls, out_dir):
         objects.append(custom_tile(
             urls["dibber"],
             (dx + right[0] * SIDE_OFFSET, 1.3, dz + right[1] * SIDE_OFFSET),
-            rot_y, f"{colour} bid", f"PILI:DIBBER:{colour}", scale=1.5))
+            rot_y, f"{colour} bid", f"PILI:DIBBER:{colour}", scale=1.1))
 
-        objects.append(scripting_zone(
-            (dx - right[0] * SIDE_OFFSET, 2.0, dz - right[1] * SIDE_OFFSET),
-            rot_y, f"PILI:PILIS:{colour}", size=(3.2, 3.0, 3.2)))
-
+        objects.append(custom_tile(
+            urls["mat"], (sx * F_TRICKS, 1.2, sz * F_TRICKS), rot_y,
+            f"{colour} tricks", f"PILI:MAT:{colour}", scale=1.7))
         objects.append(scripting_zone(
             (sx * F_TRICKS, 2.0, sz * F_TRICKS), rot_y,
             f"PILI:TRICKS:{colour}", size=(3.8, 3.0, 3.4)))
+
+        objects.append(custom_tile(
+            urls["tray"],
+            (dx - right[0] * SIDE_OFFSET, 1.2, dz - right[1] * SIDE_OFFSET),
+            rot_y, f"{colour} pilis", f"PILI:TRAY:{colour}", scale=1.2))
+        objects.append(scripting_zone(
+            (dx - right[0] * SIDE_OFFSET, 2.0, dz - right[1] * SIDE_OFFSET),
+            rot_y, f"PILI:PILIS:{colour}", size=(3.2, 3.0, 3.2)))
 
     objects.append(custom_tile(urls["button"], POS_BUTTON, 0.0,
                                "Next Round", "PILI:BUTTON", scale=2.0))
@@ -455,7 +465,8 @@ def main():
         names = {"play_face": "play_faces.png", "mission_face": "mission_faces.png",
                  "play_back": "play_back.png", "mission_back": "mission_back.png",
                  "pili": "pili_token.png", "dibber": "dibber.png",
-                 "button": "round_button.png", "dealer": "dealer.png"}
+                 "button": "round_button.png", "dealer": "dealer.png",
+                 "mat": "mat_tricks.png", "tray": "mat_pilis.png"}
         files = {k: os.path.join(art.ASSETS, v) for k, v in names.items()}
     else:
         print("rendering art ...")

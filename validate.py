@@ -136,7 +136,8 @@ for o in save["ObjectStates"]:
         notes[n] += 1
 
 for seat in seats:
-    for pre in ("PILI:DIBBER:", "PILI:TRICKS:", "PILI:PILIS:"):
+    for pre in ("PILI:DIBBER:", "PILI:TRICKS:", "PILI:PILIS:",
+                "PILI:MAT:", "PILI:TRAY:"):
         check(f"  {pre}{seat}", notes.get(pre + seat) == 1)
 for single in ("PILI:BUTTON", "PILI:DEALER", "PILI:BAG"):
     check(f"  exactly one {single}", notes.get(single) == 1)
