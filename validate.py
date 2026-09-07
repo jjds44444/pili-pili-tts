@@ -3,6 +3,7 @@ import json
 import os
 import re
 import sys
+import urllib.request
 import xml.etree.ElementTree as ET
 
 path = sys.argv[1]
@@ -84,7 +85,19 @@ for u in sorted(urls):
         local = u[len("file:///"):]
         check(f"  {os.path.basename(local)} exists", os.path.isfile(local))
     else:
-        print(f"  (remote) {u}")
+        # A save that points at a 404 loads fine and shows blank cards, so
+        # actually fetch them - this is the failure TTS will not tell you about.
+        name = u.rsplit("/", 1)[-1]
+        try:
+            req = urllib.request.Request(u, method="HEAD",
+                                         headers={"User-Agent": "pili-pili-validate"})
+            with urllib.request.urlopen(req, timeout=20) as r:
+                ctype = r.headers.get("Content-Type", "")
+                check(f"  {name} reachable ({ctype})",
+                      r.status == 200 and ctype.startswith("image/"),
+                      f"HTTP {r.status}")
+        except Exception as e:                                  # noqa: BLE001
+            check(f"  {name} reachable", False, f"{type(e).__name__}: {e}")
 
 print("\nscripting")
 try:
