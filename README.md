@@ -25,27 +25,35 @@ on the art, but only you will see them).
 
 | Flag | |
 |---|---|
-| `--skip-art` | Reuse `assets/`, just rebuild the save. Two seconds instead of two minutes. |
-| `--local` | Local `file:///` images. Host-only. |
+| `--skip-art` | Reuse `assets/`, just rebuild the save. Seconds instead of minutes. |
+| `--local` | Local `file:///` images instead of the repo's hosted copies. Host-only, but instant. |
 | `--out DIR` | Write somewhere other than the TTS Saves folder. |
-| `--base-url URL` | Serve images from somewhere else entirely. |
+| `--base-url URL` | Serve images from somewhere other than this repo. |
 
 ## Playing
 
-Sit down in a player colour — the panel top-right only shows rows for occupied seats.
+Everything lives on the table — there's no floating menu. Sit down in a player colour;
+a dibber, a trick mat and a Pili tray appear in front of your seat.
 
-**Mission** flips the next mission, which sets the round's special rule and how many
-cards to deal. **Deal** deals that many to everyone. Each player sets a hidden bet with
-their row's `-`/`+`, then **Reveal Bets** shows them all — and enforces the rule that
-the bets must not total the number of cards dealt, so there's always at least one loser.
+**Missions start OFF** — the rulebook's own advice for a first game. Flip the MISSIONS
+tile by the mission deck to turn them on. Press the chilli **Next Round** button to
+deal: with Missions off that's 5 cards each; with them on, a Mission card flips first
+and sets the round's twist plus how many cards to deal.
+
+Starting with the dealer (the gold marker), everyone bets openly on their own dibber
+with `-`/`+`. The bets can't total the number of cards dealt, so there's always at
+least one loser — the last to bet will find their dibber refuses the number that would
+make it match.
 
 Play tricks: highest card wins, no suits, the Joker takes any value from 0 to 56.
-Then take 1 Pili for every trick you're away from your bet, using the `-`/`+` or the
-physical chillies. **End Round** sweeps the cards back and reshuffles.
+**Stack every trick you win on your own mat** — that's how the button knows what you
+scored. Press **Next Round** again to score: it counts your mat, drops a Pili in your
+tray for every trick you were off by, sweeps everything, and deals the next hand.
 
-First to **6 Pilis** ends the game, and fewest Pilis wins.
+First to **6 Pilis** ends the game; fewest Pilis wins.
 
-Full rules are in the in-game notebook (`Ctrl+N`).
+The full rulebook is on the table as a physical object near the mission deck — click
+it to open, then flip through like any other TTS rulebook.
 
 ## Missions
 
@@ -61,6 +69,10 @@ Every card is drawn from scratch in code — no scans, photos or exports of the 
 game. `glyphs.py` builds tribal glyphs compositionally from silhouettes and ink marks,
 seeded per card, and roughens every contour so nothing reads as machine-drawn; `art.py`
 lays out the cards. Styled after the published design, but not copied from it.
+
+The one deliberate exception is the rulebook itself: `assets/ATM_GAMING_pilipili_RULES.pdf`
+is ATM Gaming's actual published rulebook, included and hosted as-is (not redrawn) so the
+in-game copy is the real thing rather than a paraphrase.
 
 ## Files
 

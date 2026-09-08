@@ -41,6 +41,7 @@ STYLE = {
     "Custom_Tile":      ((235, 235, 235), "tile"),
     "DeckCustom":       ((220, 90, 80), "deck"),
     "Custom_Token":     ((150, 220, 150), "token"),
+    "Custom_PDF":       ((210, 190, 150), "token"),
     "Infinite_Bag":     ((190, 140, 220), "bag"),
 }
 

@@ -36,7 +36,7 @@ busy = false       -- guard, the round sequence is asynchronous
 missionsOn = false -- off by default - the rulebook's own suggested first game
                    -- skips missions entirely; flip the tile by the mission
                    -- deck to turn them on
-seenIntro = false  -- whether the one-time "read the notebook" hint has shown
+seenIntro = false  -- whether the one-time "read the rulebook" hint has shown
 
 -- ------------------------------------------------------------------ state --
 
@@ -62,7 +62,7 @@ function onLoad(state)
     if not seenIntro then
         Wait.time(function()
             seenIntro = true
-            broadcastToAll("New here? Press Ctrl+N for the full rules.", GOLD)
+            broadcastToAll("New here? The rulebook on the table opens on click.", GOLD)
         end, 2.0)
     end
 end
@@ -532,7 +532,7 @@ function dealCards(seated, missionName, n)
             -- "X deals." message, and TTS's on-screen notification shows one
             -- message at a time - firing this one immediately would replace
             -- that one before anyone could read either. Terse status only;
-            -- full instructions live in the notebook (Ctrl+N), not in
+            -- full instructions live in the rulebook on the table, not in
             -- something that flashes and fades in a few seconds.
             Wait.time(function()
                 local label = missionName and ("Mission: " .. missionName .. ". ") or ""

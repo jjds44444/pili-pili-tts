@@ -71,33 +71,45 @@ for name, n in expected.items():
 
 print("\nimages")
 urls = set()
+pdf_urls = set()
 for o in save["ObjectStates"]:
     for cd in o.get("CustomDeck", {}).values():
         urls.add(cd["FaceURL"])
         urls.add(cd["BackURL"])
     if "CustomImage" in o:
         urls.add(o["CustomImage"]["ImageURL"])
+    if "CustomPDF" in o:
+        pdf_urls.add(o["CustomPDF"]["PDFUrl"])
     for c in o.get("ContainedObjects", []):
         if "CustomImage" in c:
             urls.add(c["CustomImage"]["ImageURL"])
-for u in sorted(urls):
+
+
+def check_url(u, expect_prefix):
     if u.startswith("file:///"):
         local = u[len("file:///"):]
         check(f"  {os.path.basename(local)} exists", os.path.isfile(local))
-    else:
-        # A save that points at a 404 loads fine and shows blank cards, so
-        # actually fetch them - this is the failure TTS will not tell you about.
-        name = u.rsplit("/", 1)[-1]
-        try:
-            req = urllib.request.Request(u, method="HEAD",
-                                         headers={"User-Agent": "pili-pili-validate"})
-            with urllib.request.urlopen(req, timeout=20) as r:
-                ctype = r.headers.get("Content-Type", "")
-                check(f"  {name} reachable ({ctype})",
-                      r.status == 200 and ctype.startswith("image/"),
-                      f"HTTP {r.status}")
-        except Exception as e:                                  # noqa: BLE001
-            check(f"  {name} reachable", False, f"{type(e).__name__}: {e}")
+        return
+    # A save that points at a 404 loads fine and shows a blank card (or, for
+    # a PDF, an object that does nothing when clicked) - this is the failure
+    # TTS will not tell you about, so actually fetch it.
+    name = u.rsplit("/", 1)[-1]
+    try:
+        req = urllib.request.Request(u, method="HEAD",
+                                     headers={"User-Agent": "pili-pili-validate"})
+        with urllib.request.urlopen(req, timeout=20) as r:
+            ctype = r.headers.get("Content-Type", "")
+            check(f"  {name} reachable ({ctype})",
+                  r.status == 200 and ctype.startswith(expect_prefix),
+                  f"HTTP {r.status}")
+    except Exception as e:                                      # noqa: BLE001
+        check(f"  {name} reachable", False, f"{type(e).__name__}: {e}")
+
+
+for u in sorted(urls):
+    check_url(u, "image/")
+for u in sorted(pdf_urls):
+    check_url(u, "application/pdf")
 
 print("\nrequired fields")
 # TTS writes these on every object it serialises. Omitting one makes the save
