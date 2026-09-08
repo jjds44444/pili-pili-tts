@@ -92,7 +92,13 @@ POS_DISCARD = (25.0, 1.6, -9.0)
 POS_REVEAL = (0.0, 1.6, -9.0)
 POS_BUTTON = (0.0, 1.3, -12.5)
 POS_PILIS = (0.0, 1.6, -5.0)
-POS_MTOGGLE = (16.0, 1.3, -12.5)
+# Was (16, -12.5): visibly clipped into the table/rail in play. POS_BUTTON
+# sits at the same z=-12.5 but x=0 and is fine, which points at the rail
+# curving inward more at higher |x| (consistent with the corner-cap
+# inaccuracy noted above) rather than z=-12.5 itself being the problem.
+# Moved to lower |x|, comfortably inside the straight-side, no-guesswork
+# region rather than re-testing the same edge a second time.
+POS_MTOGGLE = (9.0, 1.3, -9.0)
 
 _used_guids = set()
 
@@ -484,16 +490,15 @@ def build(missions, urls, out_dir, aspects=None):
     objects.append(deck(2, miss_cards, "Missions", "PILI:MISSION", cd_miss, POS_MISSION))
 
     objects.append(pili_bag(urls["pili"]))
-    # Previously sat at x=-32, deep in the curved end-cap, and clipped the
-    # rail - proof the FELT_Z=19 cap-radius estimate is too generous out
-    # there (POS_DISCARD at distance 10.8 from the cap centre is fine;
-    # x=-32 at distance 15.8 clips - the real boundary is somewhere between,
-    # and guessing a second time inside that same uncertain region isn't
-    # worth it). Moved onto the STRAIGHT side instead (|x| well under 19),
-    # where the boundary is a plain |z| <= FELT_Z check with no cap-radius
-    # guesswork at all. rot_y flipped from 180 to 0 - the cover was
-    # reported backwards; still unverified until it's seen in-game.
-    objects.append(rulebook_pdf(urls["rulebook"], (8.0, 1.3, -15.0), rot_y=0.0))
+    # The PDF viewer itself is confirmed working (opens, flips pages, locked
+    # in place as intended) - the only remaining problem was placement. Its
+    # first home (x=-32) clipped the rail in the curved end-cap; its second
+    # (z=-15) was still reported as tucked out of the way, and sat in the
+    # same deep z=-12.5/-15 band where POS_MTOGGLE separately clipped too.
+    # Moved onto the z=-9 row instead, next to Numbered Cards - the one band
+    # of the dealer's cut-out with several objects confirmed clearly visible
+    # and trouble-free across every screenshot so far.
+    objects.append(rulebook_pdf(urls["rulebook"], (-9.0, 1.3, -9.0), rot_y=0.0))
 
     # snap points for played cards, ringed tightly around the middle
     snaps = []

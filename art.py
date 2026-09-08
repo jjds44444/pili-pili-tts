@@ -318,11 +318,21 @@ def mission_card(title, body, cards, expert=False):
 
 
 def plaque(cw, ch, title, ground=(20, 18, 18), accent=(232, 196, 92),
-           chilli=False, title_frac=0.30):
-    """Dark tile used for the in-world control objects: dibbers, round button."""
+           chilli=False, title_frac=0.30, title_y=0.5):
+    """Dark tile used for the in-world control objects: dibbers, round button.
+
+    `title=None` skips the baked title entirely - for a tile whose meaning is
+    already carried by a runtime button overlay (the dibber's number row, for
+    instance), baking a second, static label into the same central space just
+    gives the two something to visually collide with. `title_y` moves the
+    title off-centre (as a fraction of height) for tiles where a button DOES
+    still need the centre - see mission_toggle, whose title used to sit right
+    under its own on/off button.
+    """
     w, h = cw * SS, ch * SS
+    seed_text = title or "plaque"
     tile = Image.new("RGBA", (w, h), ground + (255,))
-    tile.alpha_composite(glyphs.scatter((w, h), seed=stable_hash(title) % 7777,
+    tile.alpha_composite(glyphs.scatter((w, h), seed=stable_hash(seed_text) % 7777,
                                         colour=shade(ground, 2.4),
                                         count=26, glyph_px=int(min(w, h) * 0.30)))
     d = ImageDraw.Draw(tile)
@@ -345,8 +355,9 @@ def plaque(cw, ch, title, ground=(20, 18, 18), accent=(232, 196, 92),
     else:
         tx = w // 2
 
-    fnt = fit_font(FONT_BLACK, title, w * (0.62 if chilli else 0.80), h * title_frac)
-    d.text((tx, h // 2), title, font=fnt, fill=PAPER, anchor="mm")
+    if title:
+        fnt = fit_font(FONT_BLACK, title, w * (0.62 if chilli else 0.80), h * title_frac)
+        d.text((tx, int(h * title_y)), title, font=fnt, fill=PAPER, anchor="mm")
     return tile.resize((cw, ch), Image.LANCZOS).convert("RGB")
 
 
@@ -509,8 +520,11 @@ def generate(missions, progress=True):
     # and two different guesses at it both still came back visibly squashed
     # in play. Square avoids the question entirely, which is what ~95% of
     # real Custom_Tiles do (635 of 666 checked).
+    # No baked title: the runtime number row and big-pick display already say
+    # what this tile is for, and a static "BID" fighting them for the same
+    # central space read as garbled, half-covered text in play.
     p = os.path.join(ASSETS, "dibber.png")
-    plaque(600, 600, "BID", title_frac=0.20).save(p, "PNG", optimize=True)
+    plaque(600, 600, None).save(p, "PNG", optimize=True)
     out["dibber"] = p
 
     p = os.path.join(ASSETS, "round_button.png")
@@ -523,8 +537,11 @@ def generate(missions, progress=True):
     out["dealer"] = p
 
     p = os.path.join(ASSETS, "mission_toggle.png")
+    # Title pushed up near the top edge (title_y) rather than centred, so the
+    # ON/OFF toggle button - which needs the centre - stops sitting directly
+    # on top of it. Centred was what made "MISSIONS" unreadable in play.
     plaque(500, 500, "MISSIONS", ground=(26, 24, 20), accent=(232, 196, 92),
-           title_frac=0.16).save(p, "PNG", optimize=True)
+           title_frac=0.13, title_y=0.20).save(p, "PNG", optimize=True)
     out["mtoggle"] = p
 
     # mats are backdrops, so they stay quiet: dark, thin border, small type

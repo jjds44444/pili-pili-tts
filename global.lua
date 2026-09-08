@@ -140,11 +140,17 @@ function buildControls()
     local mt = one(TAG_MTOGGLE)
     if mt ~= nil then
         mt.clearButtons()
+        -- Smaller and lower than before: the baked "MISSIONS" title moved up
+        -- near the tile's top edge (see art.py's plaque title_y), and this
+        -- button used to be tall/centred enough to sit right on top of it,
+        -- which is what made the title unreadable. Shrinking the button
+        -- clears that regardless of which local axis actually maps to "up"
+        -- on the image - safer than guessing the sign and nudging position.
         mt.createButton({
             click_function = "toggleMissions", function_owner = Global,
             label = missionsLabel(),
-            position = {0, 0.3, 0.05}, width = 900, height = 380,
-            font_size = 260, color = {0.12, 0.11, 0.09}, font_color = {1, 0.95, 0.8},
+            position = {0, 0.3, 0.05}, width = 900, height = 220,
+            font_size = 230, color = {0.12, 0.11, 0.09}, font_color = {1, 0.95, 0.8},
             tooltip = "Turn Mission cards on or off for future rounds",
         })
     end
