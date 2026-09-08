@@ -480,6 +480,56 @@ def pili_token():
     return img.resize((512, 512), Image.LANCZOS)
 
 
+# Table_Custom's real felt is 44 x 26 (FELT_X/FELT_Z in build_save.py - must
+# match, same convention as the FELT_X/FELT_Z duplicated between build_save.py
+# and layout_preview.py already). TableURL doesn't get scaled to that size by
+# TTS - the table's own geometry is fixed regardless of the image - but a
+# mismatched aspect ratio would print visibly stretched, so the canvas here
+# is built to the same ratio rather than guessed square.
+FELT_ASPECT = 26.0 / 44.0
+
+
+def felt():
+    """The Custom Rectangle table's own surface: the same deep-green/tribal
+    treatment as the rest of the set (base colour, a scattered glyph field in
+    a darker tone, a hand-cut-ish border) rather than a flat placeholder -
+    the mats/dibbers/etc. already all use this language, and a flat colour
+    read as an unfinished table sitting under finished pieces."""
+    w = 2200
+    h = round(w * FELT_ASPECT)
+    ground = (22, 58, 30)
+    img = Image.new("RGBA", (w, h), ground + (255,))
+    # Sparse, small, low-contrast, roughened - this covers a much bigger area
+    # than a card does, so the same settings a card uses (dense, sharp,
+    # high-contrast) read as a wall of clip-art rather than a texture; low
+    # alpha and roughen() blur it back down to something felt-like at a
+    # glance, with detail only on a closer look.
+    img.alpha_composite(glyphs.scatter((w, h), seed=606, colour=shade(ground, 1.35),
+                                       count=22, glyph_px=int(h * 0.05),
+                                       alpha=80, rough=True))
+
+    d = ImageDraw.Draw(img)
+    border = max(6, int(h * 0.012))
+    inset = int(h * 0.02)
+    d.rectangle([inset, inset, w - inset, h - inset],
+               outline=(232, 196, 92), width=border)
+
+    # a faint ring roughly where played cards land (PLAY_CENTRE / the
+    # snap-point ring in build_save.py), so the open middle reads as a
+    # deliberate target rather than empty felt. Drawn straight (not run
+    # through roughen(), which is built for filled shapes and just erodes a
+    # stroke this thin down to nothing) with low alpha so it stays a hint,
+    # not a bullseye.
+    cx, cy = w // 2, h // 2
+    r = int(h * 0.30)
+    overlay = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    ImageDraw.Draw(overlay).ellipse([cx - r, cy - r, cx + r, cy + r],
+                                    outline=(232, 196, 92, 70), width=max(3, int(h * 0.006)))
+    img.alpha_composite(overlay)
+
+    return img.convert("RGB")
+
+
 # --------------------------------------------------------------------------- #
 # sheets
 # --------------------------------------------------------------------------- #
@@ -510,6 +560,11 @@ def generate(missions, progress=True):
             for m in missions]
     out["mission_face"] = build_sheet(miss, 6, 6, CARD_W, CARD_H,
                                       os.path.join(ASSETS, "mission_faces.png"))
+
+    say("felt")
+    p = os.path.join(ASSETS, "felt.png")
+    felt().save(p, "PNG", optimize=True)
+    out["felt"] = p
 
     say("in-world controls")
     # Square canvases throughout, deliberately: TTS's Custom_Tile Rectangle

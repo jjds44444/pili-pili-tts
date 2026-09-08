@@ -72,9 +72,12 @@ edge. `Table_Custom` is a plain rectangle - straight boundary, no corners in
 play (seats sit on the two long sides only, same as the reference mod), and
 every edge is a normal rail. See git history for the old `SEATS`/
 `felt_clamp()`/`DIR_CENTRE` machinery this replaced if any of that reasoning
-is needed again. `TableURL` (in `urls["felt"]`, built by `felt_image()` in
-`build_save.py`) is currently a plain placeholder colour, not real tribal art
-- a textured felt matching `art.py`'s palette is a follow-up, not done yet.
+is needed again. `TableURL` (in `urls["felt"]`, built by `felt()` in `art.py`)
+is the same tribal/glyph-field language as the rest of the set, not a flat
+placeholder colour - low-density, low-alpha, roughened glyphs (a much bigger
+canvas than a card, so card-density settings just read as a wall of
+clip-art), plus a faint ring roughly where the snap-point ring for played
+cards sits.
 
 Every seat's dibber, trick mat and Pili tray is computed at build time by
 `seat_spot()` in `build_save.py`, off `SEATS` - coordinates (and, per seat, a
@@ -261,13 +264,17 @@ guessing) and fixed, on the old `Table_Poker`. **None of those fixes have
 themselves been played yet.** Trust a new report from an actual game over
 assuming this list is now clean.
 
-**The switch to `Table_Custom` has not been loaded in TTS at all yet** - only
-checked with `validate.py` and `layout_preview.py`. Those catch structural
-problems (bad `CardID`s, missing fields, overlaps, off-felt placement, objects
-inside a hand zone) but not everything a real load would: whether the felt
-placeholder image actually renders instead of coming up blank, whether the
-Custom Rectangle table's real in-game boundary matches the `FELT_X`/`FELT_Z`
-estimate above, and which seat colour physically ends up at which of the six
+**The switch to `Table_Custom` has been loaded in TTS once, briefly** (not
+played) - confirmed from that: the save loads without erroring, the felt
+image renders (this caught the first felt attempt looking like a wall of
+clip-art rather than a texture - too dense, too sharp, too high-contrast for
+a canvas this much bigger than a card - and a genuine placement bug, the
+rulebook/missions-toggle plaques facing away from the table instead of into
+it, both since fixed), and every tile sits where `layout_preview.py` said it
+would. Still not confirmed: whether the Custom Rectangle table's real
+in-game boundary matches the `FELT_X`/`FELT_Z` estimate above, whether hand
+zones actually catch a dealt hand on this table the way they were checked to
+on the old poker table, and which seat colour physically ends up at which of the six
 positions (the colour-to-seat mapping was chosen, not confirmed against TTS's
 own seat-colour assignment for this table).
 
