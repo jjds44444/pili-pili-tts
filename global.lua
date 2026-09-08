@@ -36,11 +36,13 @@ busy = false       -- guard, the round sequence is asynchronous
 missionsOn = false -- off by default - the rulebook's own suggested first game
                    -- skips missions entirely; flip the tile by the mission
                    -- deck to turn them on
+seenIntro = false  -- whether the one-time "read the notebook" hint has shown
 
 -- ------------------------------------------------------------------ state --
 
 function onSave()
-    return JSON.encode({bids = bids, dealt = dealt, missionsOn = missionsOn})
+    return JSON.encode({bids = bids, dealt = dealt, missionsOn = missionsOn,
+                        seenIntro = seenIntro})
 end
 
 function onLoad(state)
@@ -50,9 +52,19 @@ function onLoad(state)
             bids = s.bids or {}
             dealt = s.dealt or 0
             missionsOn = s.missionsOn or false
+            seenIntro = s.seenIntro or false
         end
     end
     Wait.time(buildControls, 0.6)
+    -- On-table messages are deliberately terse status pings now, not
+    -- instructions - this is the one time the full explanation gets pointed
+    -- at, rather than repeated on every deal/bet/round.
+    if not seenIntro then
+        Wait.time(function()
+            seenIntro = true
+            broadcastToAll("New here? Press Ctrl+N for the full rules.", GOLD)
+        end, 2.0)
+    end
 end
 
 -- ------------------------------------------------------------------ finding --
@@ -236,8 +248,7 @@ function adjustBid(obj, player_colour, delta)
         end
     end
     if missing == 0 and others + want == dealt then
-        broadcastToAll(seat .. " is last to bet and cannot make the bets total " ..
-            dealt .. " - there has to be a loser. Pick another number.", HOT)
+        broadcastToAll(seat .. ": can't total " .. dealt .. " - pick another.", HOT)
         return
     end
 
@@ -249,8 +260,7 @@ function adjustBid(obj, player_colour, delta)
         if bids[c] == nil then unset = unset + 1 else total = total + bids[c] end
     end
     if unset == 0 then
-        broadcastToAll("All bets in (" .. total .. " of " .. dealt .. "). " ..
-            "Play to the middle - highest wins the trick and leads next.", GOLD)
+        broadcastToAll("Bets in: " .. total .. "/" .. dealt .. ". Play!", GOLD)
     end
 end
 
@@ -518,10 +528,16 @@ function dealCards(seated, missionName, n)
             end
             passDealer()
 
-            local label = missionName and ("Mission: " .. missionName .. ".  ")
-                or ""
-            broadcastToAll(label .. n .. " cards each - bet on your dibber, " ..
-                "starting with the dealer.", GOLD)
+            -- Staggered on purpose: passDealer() just broadcast its own
+            -- "X deals." message, and TTS's on-screen notification shows one
+            -- message at a time - firing this one immediately would replace
+            -- that one before anyone could read either. Terse status only;
+            -- full instructions live in the notebook (Ctrl+N), not in
+            -- something that flashes and fades in a few seconds.
+            Wait.time(function()
+                local label = missionName and ("Mission: " .. missionName .. ". ") or ""
+                broadcastToAll(label .. n .. " cards each.", GOLD)
+            end, 2.2)
             busy = false
         end, 1.0)
     end, 0.6)
@@ -584,5 +600,5 @@ function passDealer()
         marker.setPositionSmooth({dp.x, dp.y + 1.2, dp.z})
     end
     Turns.turn_color = nxt
-    broadcastToAll(nxt .. " is dealer - bets first, plays first.", COOL)
+    broadcastToAll(nxt .. " deals.", COOL)
 end

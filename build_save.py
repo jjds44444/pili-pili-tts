@@ -326,64 +326,56 @@ def pili_bag(image_url):
     })
 
 
-RULES = """PILI PILI - how a round runs
+RULES = """PILI PILI - full rules
 
-Everything needed is on the table: a chilli button in the middle runs the
-round, and a dibber in front of every seat holds that player's bet.
+Two lines from the rulebook that say what the game is:
+"In Pili Pili, you have to guess how many tricks you'll win... and try to
+stick to that guess!" "A trick refers to the cards played during a round and
+collected by the player who played the highest-value card!"
 
-The idea of the whole game: guess how many of your cards will win their
-trick, then try to make exactly that many come true.
+Everything else you need is on the table: the chilli button in the middle
+runs each round, a dibber in front of every seat holds that player's bet,
+and a mat catches the tricks you win.
 
-WHAT IS A "TRICK"? Once per round, everyone plays one card face up to the
-middle at the same time (well, one after another, but nobody needs to see
-yours before playing theirs). Whoever played the highest number takes all of
-those cards - that's a trick - and keeps them, face down, on their own mat.
-Then everyone plays again for the next trick, and so on until every card in
-your hand is gone.
+MISSIONS start OFF. The rulebook's own advice for a first game is to skip
+them and deal 5 cards straight to betting - flip the MISSIONS tile by the
+mission deck whenever you want them on.
 
-MISSIONS are OFF to start. Flip the MISSIONS tile by the mission deck to ON
-if you want them - see below.
-
-1. PRESS THE CHILLI TO DEAL
-   With Missions OFF, this deals 5 cards to everyone and you go straight to
-   step 2. With Missions ON, it also flips a Mission card first, which sets a
-   special rule for the round and how many cards to deal instead of 5 (see the
-   card, bottom-left). Leftover cards go face down on the SET ASIDE spot -
-   still in play for the one Mission that draws an extra card.
+1. DEAL - press the chilli
+   Missions OFF: 5 cards each.
+   Missions ON: a Mission card flips first, setting the round's twist and
+   how many cards to deal (printed bottom-left). Leftovers go face down on
+   SET ASIDE - still in play for the one Mission that draws an extra card.
 
 2. BET
-   Starting with the DEALER (gold marker) and going round the table, everyone
-   sets how many tricks they expect to win on their own dibber, using - and +.
-   Bets are open on purpose - watch the others and adjust your plan.
+   "Starting with the dealer, each player bets on how many tricks they
+   think they will win" - use your own dibber's - and +. Bets are open
+   on purpose, so you can see what everyone else is planning.
 
-   One rule to know: the bets must NOT add up to exactly the number of cards
-   dealt - there always has to be at least one loser. If you are the last to
-   bet and your number would make the total match, your dibber will refuse it;
-   pick a different number.
+   "The total number of bets must not equal the number of cards dealt to
+   each player" - there is always at least one loser. Bet last and your
+   number would make the totals match? Your dibber refuses it; pick another.
 
-3. PLAY THE TRICKS
-   The dealer plays the first card of the round (nobody has won a trick yet,
-   so there is nothing else to go on). After that, whoever won the last trick
-   plays first for the next one. Play continues until every card is gone.
+3. PLAY
+   The dealer leads the very first card, since nobody has won a trick yet
+   to lead from. After that, "the player who plays the highest-value card
+   wins the trick and leads the next one." No suits - only the number
+   counts. The Joker "takes any value... between 0 and 56," chosen as you
+   play it.
 
-   STACK THE TRICKS YOU WIN ON YOUR OWN MAT, face down, and leave them there.
-   The chilli button counts your pile at the end of the round to work out how
-   many tricks you actually won - if you tidy them away early it can't score
-   correctly.
+   Stack every trick you win on your own mat, face down, and leave it -
+   the chilli button counts it at the end of the round.
 
-4. SCORE AND START THE NEXT ROUND
-   Press the chilli again. For each seat it works out tricks won (cards on
-   your mat divided by the number of players) and compares it to your bet:
-   every trick you were over or under by drops one Pili into your tray. Bet
-   exactly right and nothing happens.
-
-   A handful of Missions change how Pilis are scored (Cool Down, First & Last,
-   Cursed Cards, Shared Burn) - the button can't see those, so just drag
-   chillies into or out of your own tray to match what the card says.
+4. SCORE - press the chilli again
+   "Each player receives 1 Pili as a penalty for every trick they missed
+   their bet by." Exactly right costs nothing. A few Missions change this
+   (Cool Down, First & Last, Cursed Cards, Shared Burn) - the button can't
+   see those, so just drag chillies into or out of your own tray to match
+   what the card says.
 
 5. WINNING
-   The moment anyone's tray holds 6 Pilis, the game ends immediately and
-   whoever has the FEWEST Pilis wins."""
+   "As soon as a player reaches 6 Pilis, the game ends. The player with
+   the fewest Pilis is declared the winner." """
 
 CREDITS = """Pili Pili is designed by Ben, Martin & JB and published by ATM Gaming.
 This is an unofficial fan-made Tabletop Simulator implementation - buy the real
