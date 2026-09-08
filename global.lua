@@ -208,17 +208,27 @@ FONT_SELECTED = {0.12, 0.10, 0.06}
 BTN_FORBIDDEN = {0.22, 0.20, 0.19}
 FONT_FORBIDDEN = {0.50, 0.47, 0.45}
 
+-- The seat/outward split below (see the two comments inline) is derived from
+-- rotY=180, the facing shared by the four straight-edge seats. Red and Purple
+-- use their own rotation (see SEATS in build_save.py) to face the felt
+-- correctly, which was never checked against this same z-axis math - their
+-- dibbers may not split seat-side/table-side as cleanly as the other four.
 function buildDibberButtons()
     for _, d in ipairs(tagged(TAG_DIBBER, false)) do
         d.clearButtons()
         local colour = seatOf(d, TAG_DIBBER)
 
-        -- index 0: the big display. Its own click just repeats the hint -
-        -- betting itself only ever happens through the numbered row below.
+        -- index 0: the big display, meant to be read by everyone ELSE at
+        -- the table - it faces outward, away from the seat (local +Z, which
+        -- rotY=180 - the shared facing for every straight-edge seat - turns
+        -- into world -Z, i.e. toward the table's own centre). Its own click
+        -- just repeats the hint; betting itself only happens on the row
+        -- below, which sits on the opposite (seat-facing) side so the
+        -- player reaches for it naturally rather than across the display.
         d.createButton({
             click_function = "bidNudge", function_owner = Global,
             label = bidLabel(colour),
-            position = {0, 0.3, -0.40}, width = 1000, height = 560,
+            position = {0, 0.3, 0.40}, width = 1000, height = 560,
             font_size = 440, color = {0.08, 0.07, 0.07}, font_color = {1, 0.95, 0.82},
             tooltip = colour .. "'s bet - tap a number below to set it",
         })
@@ -230,7 +240,7 @@ function buildDibberButtons()
                 d.createButton({
                     click_function = "bidPick" .. k, function_owner = Global,
                     label = tostring(k),
-                    position = {-0.85 + step * k, 0.3, 0.42}, width = 150, height = 210,
+                    position = {-0.85 + step * k, 0.3, -0.42}, width = 150, height = 210,
                     font_size = 120, color = BTN_NORMAL, font_color = FONT_NORMAL,
                     tooltip = colour .. ": bet " .. k,
                 })

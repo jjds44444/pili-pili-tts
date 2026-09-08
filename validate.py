@@ -97,7 +97,7 @@ def check_url(u, expect_prefixes):
     # (confirmed: real %PDF bytes, exact byte count, just an untagged content
     # type) - checked prefixes are a tuple so that quirk doesn't read as a
     # failure here.
-    name = u.rsplit("/", 1)[-1]
+    name = u.rsplit("/", 1)[-1].split("?", 1)[0]  # drop the cache-busting ?v=
     try:
         req = urllib.request.Request(u, method="HEAD",
                                      headers={"User-Agent": "pili-pili-validate"})

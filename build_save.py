@@ -12,6 +12,7 @@ import json
 import math
 import os
 import random
+import hashlib
 import shutil
 import sys
 import time
@@ -73,9 +74,13 @@ DIR_CENTRE = (0.0, -500.0)
 # large, real 9.6 x 5.6 box - shrinking HAND_W/HAND_D below the reference
 # mod's real value would let it sit closer, at the cost of a smaller, less
 # reliable card-catching area.
-OUT_MAT = 10.5        # trick mat, in front of the seat
-OUT_CTRL = 6.5         # dibber and Pili tray, between the seat and the mat
-SIDE_CTRL = 2.5        # and apart from each other
+# Re-searched with a thinner (but still real, 0.5-unit) required margin
+# instead of maximum comfort - the previous pass optimised for headroom and
+# ended up reading as "too far from the seat" in play, even though nothing
+# was actually wrong with it.
+OUT_MAT = 8.25        # trick mat, in front of the seat
+OUT_CTRL = 4.5         # dibber and Pili tray, between the seat and the mat
+SIDE_CTRL = 1.75       # and apart from each other
 
 # Reported bug: the play deck kept drifting toward the table edge and falling
 # off. z=-15/-16.5 sat deep in the dealer's cut-out, which real poker tables
@@ -638,7 +643,17 @@ def main():
         if os.path.abspath(src) != os.path.abspath(dst):
             shutil.copyfile(src, dst)
         if args.base_url:
-            urls[key] = args.base_url.rstrip("/") + "/" + name
+            # TTS caches a downloaded image/PDF by URL and has no reason to
+            # suspect the same URL now points at different bytes - several
+            # fixes this session edited a file without the fix visibly
+            # taking effect, and a stale client-side cache is a real,
+            # previously-unhandled explanation for that. A content-hash
+            # query string makes the URL itself change whenever the file's
+            # bytes do, forcing a fresh download; an unchanged file keeps
+            # the same URL, so nothing gets needlessly re-fetched.
+            with open(src, "rb") as fh:
+                digest = hashlib.md5(fh.read()).hexdigest()[:10]
+            urls[key] = f"{args.base_url.rstrip('/')}/{name}?v={digest}"
         else:
             urls[key] = "file:///" + dst.replace("\\", "/")
 
