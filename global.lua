@@ -124,29 +124,7 @@ end
 -- ------------------------------------------------------------------ controls --
 
 function buildControls()
-    for _, d in ipairs(tagged(TAG_DIBBER, false)) do
-        d.clearButtons()
-        local colour = seatOf(d, TAG_DIBBER)
-        d.createButton({
-            click_function = "bidDown", function_owner = Global, label = "-",
-            position = {-0.62, 0.3, 0.10}, width = 320, height = 320,
-            font_size = 260, color = {0.55, 0.10, 0.09}, font_color = {1, 1, 1},
-            tooltip = colour .. ": one fewer trick",
-        })
-        d.createButton({
-            click_function = "bidNudge", function_owner = Global,
-            label = bidLabel(colour),
-            position = {0.0, 0.3, 0.10}, width = 520, height = 320,
-            font_size = 260, color = {0.10, 0.09, 0.09}, font_color = {1, 0.95, 0.8},
-            tooltip = colour .. "'s bet",
-        })
-        d.createButton({
-            click_function = "bidUp", function_owner = Global, label = "+",
-            position = {0.62, 0.3, 0.10}, width = 320, height = 320,
-            font_size = 260, color = {0.55, 0.10, 0.09}, font_color = {1, 1, 1},
-            tooltip = colour .. ": one more trick",
-        })
-    end
+    buildDibberButtons()
 
     local b = one(TAG_BUTTON)
     if b ~= nil then
@@ -171,7 +149,6 @@ function buildControls()
         })
     end
 
-    refreshDibbers()
 end
 
 function missionsLabel()
@@ -200,47 +177,101 @@ end
 
 function bidLabel(colour)
     local b = bids[colour]
-    if b == nil then return "" end      -- blank until this seat has bet -
-                                         -- "?" looked like a third minus
-                                         -- button crammed between the real
-                                         -- two, and read as upside-down
+    if b == nil then return "" end
     return tostring(b)
 end
 
-function refreshDibbers()
+-- ------------------------------------------------------------------ betting --
+--
+-- One numbered button per possible bet (0..dealt) plus a big persistent
+-- display of the current pick - replaces an earlier +/- counter whose
+-- current value was a small label easy to miss, on a tile with no visible
+-- indication of what a fresh, blank centre even was.
+--
+-- Rebuilt every time `dealt` changes (a new deal can have a different card
+-- count), since the number of buttons itself depends on it.
+
+MAX_BID = 11  -- generous headroom above missions.json's current 2-7 range;
+              -- bidPick0..bidPickMAX must exist as real functions below,
+              -- since TTS click handlers take no custom argument - see those.
+
+BTN_NORMAL = {0.55, 0.10, 0.09}
+FONT_NORMAL = {1, 1, 1}
+BTN_SELECTED = {0.80, 0.64, 0.20}
+FONT_SELECTED = {0.12, 0.10, 0.06}
+BTN_FORBIDDEN = {0.22, 0.20, 0.19}
+FONT_FORBIDDEN = {0.50, 0.47, 0.45}
+
+function buildDibberButtons()
     for _, d in ipairs(tagged(TAG_DIBBER, false)) do
-        d.editButton({index = 1, label = bidLabel(seatOf(d, TAG_DIBBER))})
+        d.clearButtons()
+        local colour = seatOf(d, TAG_DIBBER)
+
+        -- index 0: the big display. Its own click just repeats the hint -
+        -- betting itself only ever happens through the numbered row below.
+        d.createButton({
+            click_function = "bidNudge", function_owner = Global,
+            label = bidLabel(colour),
+            position = {0, 0.3, -0.40}, width = 1000, height = 560,
+            font_size = 440, color = {0.08, 0.07, 0.07}, font_color = {1, 0.95, 0.82},
+            tooltip = colour .. "'s bet - tap a number below to set it",
+        })
+
+        local n = math.max(dealt, 0)
+        if n > 0 then
+            local step = 1.7 / n
+            for k = 0, n do
+                d.createButton({
+                    click_function = "bidPick" .. k, function_owner = Global,
+                    label = tostring(k),
+                    position = {-0.85 + step * k, 0.3, 0.42}, width = 150, height = 210,
+                    font_size = 120, color = BTN_NORMAL, font_color = FONT_NORMAL,
+                    tooltip = colour .. ": bet " .. k,
+                })
+            end
+        end
+    end
+    refreshForbidden()
+end
+
+function bidNudge(obj, player_colour)
+    if dealt <= 0 then
+        broadcastToColor("Nothing dealt yet - press the chilli.", player_colour, GOLD)
+    else
+        broadcastToColor("Tap a number below to set your bet.", player_colour, GOLD)
     end
 end
 
--- ------------------------------------------------------------------ betting --
+-- Numbered click handlers. TTS's click_function callback is always
+-- (object, player_colour, alt_click) - it carries no data of its own, so a
+-- button whose action depends on a specific number needs its own uniquely
+-- named function per number rather than one shared handler with an argument.
+function bidPick0(obj, c) setBid(obj, c, 0) end
+function bidPick1(obj, c) setBid(obj, c, 1) end
+function bidPick2(obj, c) setBid(obj, c, 2) end
+function bidPick3(obj, c) setBid(obj, c, 3) end
+function bidPick4(obj, c) setBid(obj, c, 4) end
+function bidPick5(obj, c) setBid(obj, c, 5) end
+function bidPick6(obj, c) setBid(obj, c, 6) end
+function bidPick7(obj, c) setBid(obj, c, 7) end
+function bidPick8(obj, c) setBid(obj, c, 8) end
+function bidPick9(obj, c) setBid(obj, c, 9) end
+function bidPick10(obj, c) setBid(obj, c, 10) end
+function bidPick11(obj, c) setBid(obj, c, 11) end
 
-function bidNudge(obj, player_colour)
-    broadcastToColor("Use - and + to set your bet.", player_colour, GOLD)
-end
-
-function bidUp(obj, player_colour) adjustBid(obj, player_colour, 1) end
-function bidDown(obj, player_colour) adjustBid(obj, player_colour, -1) end
-
-function adjustBid(obj, player_colour, delta)
+function setBid(obj, player_colour, want)
     local seat = seatOf(obj, TAG_DIBBER)
     local p = Player[player_colour]
     if player_colour ~= seat and not (p ~= nil and p.admin) then
         broadcastToColor("That is " .. seat .. "'s dibber, not yours.", player_colour, HOT)
         return
     end
-    if dealt <= 0 then
-        broadcastToColor("Nothing dealt yet - press the chilli.", player_colour, HOT)
-        return
-    end
-
-    local want = (bids[seat] or 0) + delta
-    if want < 0 then want = 0 end
-    if want > dealt then want = dealt end
+    if dealt <= 0 or want > dealt then return end
 
     -- The bets must not total the cards dealt, and that binds whoever bets
     -- last. If everyone else has bet, this player is last, so refuse the one
-    -- number that would make the totals match.
+    -- number that would make the totals match - refreshForbidden() already
+    -- greys that button out, this is the backstop if it gets clicked anyway.
     local others, missing = 0, 0
     for c, _ in pairs(seatedSet()) do
         if c ~= seat then
@@ -253,7 +284,9 @@ function adjustBid(obj, player_colour, delta)
     end
 
     bids[seat] = want
-    refreshDibbers()
+    local d = one(TAG_DIBBER .. seat)
+    if d ~= nil then d.editButton({index = 0, label = bidLabel(seat)}) end
+    refreshForbidden()
 
     local total, unset = 0, 0
     for c, _ in pairs(seatedSet()) do
@@ -261,6 +294,49 @@ function adjustBid(obj, player_colour, delta)
     end
     if unset == 0 then
         broadcastToAll("Bets in: " .. total .. "/" .. dealt .. ". Play!", GOLD)
+    end
+end
+
+-- Recolours every seat's number row: gold on the seat's current pick, grey
+-- on the one number that would illegally tie the total for whichever seat
+-- is currently the sole one left to bet, plain red otherwise. Runs after
+-- every bid change, since one player's pick can create or clear that
+-- restriction for a different seat.
+function refreshForbidden()
+    local seated = seatedSet()
+    for _, d in ipairs(tagged(TAG_DIBBER, false)) do
+        local colour = seatOf(d, TAG_DIBBER)
+        if seated[colour] then
+            local n = math.max(dealt, 0)
+            local forbidden = nil
+            if bids[colour] == nil and n > 0 then
+                local others, missing = 0, 0
+                for c, _ in pairs(seated) do
+                    if c ~= colour then
+                        if bids[c] == nil then missing = missing + 1
+                        else others = others + bids[c] end
+                    end
+                end
+                if missing == 0 then
+                    local f = dealt - others
+                    if f >= 0 and f <= dealt then forbidden = f end
+                end
+            end
+            local selected = bids[colour]
+            -- buildDibberButtons() only creates the number row when n > 0 -
+            -- editing button k+1 here when n == 0 would touch a button that
+            -- was never created (only the display exists then), which is
+            -- exactly what crashed on every fresh table load before a single
+            -- "Next Round" press ever happened.
+            for k = 0, n do
+                if n == 0 then break end
+                local col, fcol
+                if forbidden == k then col, fcol = BTN_FORBIDDEN, FONT_FORBIDDEN
+                elseif selected == k then col, fcol = BTN_SELECTED, FONT_SELECTED
+                else col, fcol = BTN_NORMAL, FONT_NORMAL end
+                d.editButton({index = k + 1, color = col, font_color = fcol})
+            end
+        end
     end
 end
 
@@ -423,7 +499,7 @@ function nextRound()
             busy = false
             dealt = 0
             bids = {}
-            refreshDibbers()
+            buildDibberButtons()
             return
         end
         sweepAndDeal(seated)
@@ -512,7 +588,7 @@ function dealCards(seated, missionName, n)
 
     dealt = n
     bids = {}
-    refreshDibbers()
+    buildDibberButtons()
     deck.shuffle()
 
     Wait.time(function()

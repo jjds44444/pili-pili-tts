@@ -170,13 +170,36 @@ check("no leftover floating UI", save["XmlUI"].strip() == "")
 
 print("\nscripting")
 lua = save["LuaScript"]
-# every click_function named in the script must actually exist in it
-for fn in sorted(set(re.findall(r'click_function\s*=\s*"([A-Za-z_]+)"', lua))):
+# Every LITERAL click_function named in the script must actually exist as a
+# function. bidPickN is built as "bidPick" .. k (a runtime string
+# concatenation, since TTS click handlers take no argument of their own -
+# each number needs its own named function) - the regex below only sees
+# literal string click_functions, so it can't check those directly; the
+# MAX_BID loop just below checks every bidPickN the concatenation could ever
+# produce actually exists instead.
+for fn in sorted(set(re.findall(r'click_function\s*=\s*"([A-Za-z_]+)"(?!\s*\.\.)', lua))):
     check(f"  Lua defines {fn}()",
           re.search(r"function\s+" + fn + r"\s*\(", lua) is not None)
-for fn in ("nextRound", "bidUp", "bidDown", "scoreRound", "passDealer"):
+for fn in ("nextRound", "setBid", "buildDibberButtons", "refreshForbidden",
+           "scoreRound", "passDealer"):
     check(f"  Lua defines {fn}()",
           re.search(r"function\s+" + fn + r"\s*\(", lua) is not None)
+
+m = re.search(r"MAX_BID\s*=\s*(\d+)", lua)
+if m:
+    max_bid = int(m.group(1))
+    for k in range(max_bid + 1):
+        fn = f"bidPick{k}"
+        check(f"  Lua defines {fn}()",
+              re.search(r"function\s+" + fn + r"\s*\(", lua) is not None)
+    counts_seen = [int(re.search(r"\[deal (\d+)\]", c["Description"]).group(1))
+                   for o in save["ObjectStates"] if o["Nickname"] == "Missions"
+                   for c in o["ContainedObjects"]]
+    check(f"  MAX_BID ({max_bid}) covers every mission's deal count",
+          max_bid >= max(counts_seen, default=0),
+          f"largest deal count is {max(counts_seen, default=0)}")
+else:
+    check("  MAX_BID found in script", False)
 
 # tags the script looks for must match the tags the save actually writes
 for tag in ("PILI:PLAY", "PILI:MISSION", "PILI:TOKEN"):
