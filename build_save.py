@@ -91,7 +91,11 @@ POS_DISCARD = (30.0, 1.6, 8.0)
 POS_REVEAL = (0.0, 1.6, 0.0)
 POS_BUTTON = (0.0, 1.3, 10.0)
 POS_PILIS = (0.0, 1.6, -10.0)
-POS_MTOGGLE = (12.0, 1.3, 0.0)
+# Missions toggle and rulebook sit together, further out on the same west
+# flank than PLAY/ASIDE - off to one side of the table, out of the open
+# middle, rather than parked on the centreline where they read as sat in the
+# way of the play area.
+POS_MTOGGLE = (-38.0, 1.3, 6.0)
 
 _used_guids = set()
 
@@ -460,10 +464,10 @@ def build(missions, urls, out_dir, aspects=None):
     objects.append(pili_bag(urls["pili"]))
     # The PDF viewer itself is confirmed working (opens, flips pages, locked
     # in place as intended) on the old table - only its placement needs
-    # redoing here. Mirrors POS_MTOGGLE across x=0, on the same open flank,
-    # well clear of both the mat/dibber/tray clusters and the shared piles
-    # further out toward the short ends.
-    objects.append(rulebook_pdf(urls["rulebook"], (-12.0, 1.3, 0.0), rot_y=0.0))
+    # redoing here. Sits right next to POS_MTOGGLE on the same west flank
+    # (see the comment there) rather than on the centreline, where it read
+    # as sat in the middle of the play area for no reason.
+    objects.append(rulebook_pdf(urls["rulebook"], (-38.0, 1.3, -6.0), rot_y=0.0))
 
     # snap points for played cards, ringed tightly around the middle
     snaps = []
