@@ -63,15 +63,31 @@ resolution. Dropping `SS` to 1 makes iteration fast but looks bad.
 ## Table layout
 
 Every seat's dibber, trick mat and Pili tray is computed at build time by
-`seat_spot()` in `build_save.py`, off `SEATS` - coordinates lifted from a real
-Tabletop Simulator mod that seats players on this exact table (currently 6,
-from "The Gang [Scripted]", workshop id 3385562324), not derived or guessed.
-If the player count changes, replace `SEATS` with coordinates from a workshop
-mod seating that many players on `Table_Poker` rather than inventing new ones -
-guessed coordinates were tried twice here and were wrong both times.
+`seat_spot()` in `build_save.py`, off `SEATS` - coordinates (and, per seat, a
+display rotation) lifted from real Tabletop Simulator mods that seat players
+on this exact table (currently 6, from "The Gang [Scripted]", workshop id
+3385562324), not derived or guessed. If the player count changes, replace
+`SEATS` with coordinates from a workshop mod seating that many players on
+`Table_Poker` rather than inventing new ones - guessed coordinates were tried
+twice here and were wrong both times. `HAND_W`/`HAND_D` (9.6 x 5.6) are that
+same mod's real HandTrigger size, not a guess either - see the paragraph below
+on why that matters.
 
-`seat_spot()` deliberately uses two different reference points, and collapsing
-them back into one is the mistake to avoid re-making:
+The 4th field in each `SEATS` entry is the rotation for that seat's DISPLAY
+tiles only (dibber/mat/tray/dealer) - the HandTrigger itself always stays at
+180 regardless, matching every real seat on this table, since that governs how
+a dealt hand fans out and has nothing to do with what a human reads. The four
+seats on the table's straight edge share 180 for both; the two corner seats
+(Red, Purple) wrap around at a visibly different angle and were inheriting
+that same 180 until this looked wrong in play - they now get their own
+rotation, computed once by facing each toward the true centre of the felt
+(see the git history for the numbers, or just recompute: face each seat's
+tiles toward roughly `(0, -2)` and it reproduces 180 for the straight-edge
+seats and something sensible for the corners).
+
+`seat_spot()` deliberately uses two different reference points for PLACEMENT
+(as opposed to the rotation above, which is separate), and collapsing them
+back into one is the mistake to avoid re-making:
 - `DIR_CENTRE` is a point placed far off the table, used only to pick each
   seat's "inward" direction. It has to be distant - using the real, nearby
   play-area centre made every seat's objects converge on that one nearby spot,
@@ -79,14 +95,39 @@ them back into one is the mistake to avoid re-making:
 - `PLAY_CENTRE` is the real centre of the play area, used only to position the
   snap-point ring for played cards.
 
+**The dibber and Pili tray used to sit inside their own seat's HandTrigger.**
+Anything landing there - a dealt card, a Pili paid out by the script - can get
+swept into that player's private hand instead of staying visible on the
+table, which is exactly the bug this shipped as once. `OUT_MAT`/`OUT_CTRL`/
+`SIDE_CTRL` were found by a search over the real `SEATS` coordinates and the
+real `HAND_W`/`HAND_D`, for values under which every tile clears every hand
+zone with margin - if you change any of `SEATS`, `HAND_W`/`HAND_D`, or a
+tile's own scale, re-run that search rather than eyeballing it; the numbers
+that look fine in `layout_preview.py`'s 2D top-down view can still be inside
+a hand zone; that class of bug is exactly what the next paragraph's check is
+for.
+
 Positions are clamped to `FELT_X`/`FELT_Z` (an estimate, see `layout_preview.py`)
 as a safety net, since a large `SIDE_CTRL` can walk a corner seat's objects past
 the felt edge.
 
-Check any layout change with `python layout_preview.py <path/to/PiliPili.json>`
+**`custom_tile()` derives `scaleZ` from the source image's real aspect ratio**
+(read from the actual PNG file, via `aspects` computed in `main()`) rather than
+taking one `scale` value for both axes. TTS's `CustomTile.Type: 3` (Rectangle)
+takes `scaleX`/`scaleZ` completely literally and does not infer them from the
+image - passing the same value for both, which an earlier version of this file
+did, squashes any non-square plaque onto a square footprint. That is what made
+"TRICKS WON" look oversized and the dibber's buttons look cramped: both were
+sized correctly for their real (non-square) canvas and then physically
+squeezed into a square. Any new plaque-based tile needs its real aspect ratio
+passed through the same way, not a hand-picked `scale`.
+
+**Check any layout change** with `python layout_preview.py <path/to/PiliPili.json>`
 before loading it in TTS - it draws every object at its real position and
-footprint and fails if anything overlaps or sits off the felt. Tuning against
-this cut a multi-minute TTS-screenshot loop down to seconds.
+footprint, and fails if anything overlaps, sits off the felt, **or sits inside
+a hand zone**. Tuning against this cut a multi-minute TTS-screenshot loop down
+to seconds, and the hand-zone check is what would have caught the Pili-into-
+hand bug before it ever reached a real game.
 
 ## Things that will bite you
 
@@ -107,7 +148,33 @@ every seat has the full set - keep that invariant or the round button silently
 stops finding a seat's objects.
 
 **Mission deal counts live in the card Description** as `[deal N]`, parsed by
-`dealFromMission()`. `build_save.py` appends it; don't strip it.
+`dealCards()` (called from `sweepAndDeal()` whether or not a mission was
+actually drawn). `build_save.py` appends it; don't strip it.
+
+**Missions default OFF** (`missionsOn = false`), toggled by the `PILI:MTOGGLE`
+tile's button - matches the rulebook's own "first game" suggestion (deal 5,
+skip missions). `sweepAndDeal()` branches on it before touching the mission
+deck at all when off; the mission deck is completely untouched in that case,
+not just hidden.
+
+**Resting community piles are locked, not just positioned.** The play deck
+was reported drifting off the table entirely - its home sat deep in the
+dealer's open cut-out, which real poker tables leave unrailed on at least one
+side, so a physics nudge from anything nearby could walk it right off the
+felt. `lockAtRest()`/`unlockForOps()` in `global.lua` pin every shared pile
+(play deck, leftover "aside" pile, mission deck, discard) once it settles, and
+unlock it again immediately before the next scripted `.shuffle()`/`.deal()`/
+`.takeObject()` call. Add a new shared pile without this pattern and expect it
+to eventually walk off the table the same way.
+
+**Every `Custom_Token`'s `ImageSecondaryURL` is empty, always, even for
+one-shot tokens with a genuinely blank back** - confirmed against ~450
+tokens across 28 real workshop mods, `Stackable` true or false. TTS mirrors
+the front onto the back itself when it is empty and `Stackable` is false. An
+earlier version of `pili_bag()` explicitly set the same URL on both sides on
+an unverified guess about why the back was blank, and that was almost
+certainly the actual bug, not the fix. Don't set `ImageSecondaryURL` on a
+`Custom_Token` unless you actually want a different back image.
 
 **The seating order is injected into the Lua at build time**, not written in
 `global.lua` itself - `build_save.py` prepends `SEAT_ORDER = {...}` (from `SEATS`)
@@ -151,13 +218,17 @@ whole fix — don't restructure code for it.
 ## Verified so far, and what is not
 
 Loaded and played with in real Tabletop Simulator sessions (not just `validate.py`):
-the save loads, hand zones catch dealt cards at the right seats, the round button's
-deal/reshuffle/mission flow runs, and the table layout has been tuned against
-in-game screenshots plus `layout_preview.py`.
+the save loads, hand zones catch dealt cards at the right seats, and the round
+button's deal/reshuffle/mission flow runs. That same real play turned up a real
+list of bugs - oversized/cramped tiles, Pilis at risk of landing in a hand, a
+blank token back, the dealer marker sitting on the dibber, corner seats facing
+the wrong way, and the play deck drifting off the table - all root-caused
+against real data (28 workshop mods' worth of genuine TTS objects, not more
+guessing) and fixed. **None of those fixes have themselves been played yet.**
+Trust a new report from an actual game over assuming this list is now clean.
 
-Not yet confirmed: a full round end-to-end (bidding through scoring through the
-6-Pili game-over check), the "bets must not total the cards dealt" rule actually
-tripping in practice, and whether stacking tricks onto the mat and having the
-button divide by seat count produces the right numbers at the table. All of
-these are one playtest away from being either confirmed or wrong - trust a
-report from an actual game over reasoning about the Lua from here.
+Still not confirmed even before this pass: a full round end-to-end (bidding
+through scoring through the 6-Pili game-over check), the "bets must not total
+the cards dealt" rule actually tripping in practice, and whether stacking
+tricks onto the mat and having the button divide by seat count produces the
+right numbers at the table.
