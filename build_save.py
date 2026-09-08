@@ -33,13 +33,20 @@ import art  # noqa: E402  (lives next to this script)
 # table. They run along the +z long side and wrap slightly round the two
 # corners; the entire -z half (the dealer's cut-out) is free for the play area,
 # and with only 6 seats there is no crowding near the corners either.
+# 4th field: rotY for this seat's DISPLAY tiles (dibber/mat/tray/dealer) - not
+# the HandTrigger itself, which stays at the reference mod's 180 for every seat
+# regardless (that governs how a dealt hand fans out, not what a human reads).
+# The middle four sit on a near-straight run of the table edge and share one
+# facing; Red and Purple wrap around the corner and were inheriting that same
+# 180 despite sitting at a visibly different angle - computed by facing each
+# toward the true centre of the felt instead.
 SEATS = [
-    ("Red",    -34.07,  7.91),
-    ("Orange", -21.77, 14.48),
-    ("White",   -6.85, 14.42),
-    ("Green",    6.83, 14.45),
-    ("Blue",    21.04, 14.32),
-    ("Purple",  34.07,  7.91),
+    ("Red",    -34.07,  7.91, 286.2),
+    ("Orange", -21.77, 14.48, 180.0),
+    ("White",   -6.85, 14.42, 180.0),
+    ("Green",    6.83, 14.45, 180.0),
+    ("Blue",    21.04, 14.32, 180.0),
+    ("Purple",  34.07,  7.91,  73.8),
 ]
 
 # The real centre of the play area, where the snap-point ring for played
@@ -54,17 +61,32 @@ PLAY_CENTRE = (0.0, -6.0)
 # gives every seat's own cluster of objects its own lane.
 DIR_CENTRE = (0.0, -500.0)
 
-OUT_MAT = 10.0        # trick mat, in front of the seat
-OUT_CTRL = 3.0        # dibber and Pili tray, between the seat and the mat
-SIDE_CTRL = 3.0        # and apart from each other
+# The dibber/tray used to sit inside the seat's own HandTrigger footprint
+# (9.6 x 5.6, from the reference mod - see hand_zone()) - anything dropped
+# there, including Pilis paid out by the script, could get swept into that
+# player's private hand instead of staying on the table. These values were
+# found by search: the largest OUT_MAT/OUT_CTRL/SIDE_CTRL under which every
+# tile clears every hand zone, the felt bounds, and every other tile.
+OUT_MAT = 12.0        # trick mat, in front of the seat
+OUT_CTRL = 5.0         # dibber and Pili tray, between the seat and the mat
+SIDE_CTRL = 3.5        # and apart from each other
 
-POS_PLAY = (-16.0, 1.6, -15.0)
-POS_ASIDE = (-25.0, 1.6, -15.0)
-POS_MISSION = (16.0, 1.6, -15.0)
-POS_DISCARD = (25.0, 1.6, -15.0)
-POS_REVEAL = (0.0, 1.6, -11.0)
-POS_BUTTON = (0.0, 1.3, -16.5)
+# Reported bug: the play deck kept drifting toward the table edge and falling
+# off. z=-15/-16.5 sat deep in the dealer's cut-out, which real poker tables
+# leave unrailed on at least one side - there is nothing there to stop a
+# nudged deck sliding off the felt entirely. Trick mats reach no further than
+# z=-4.1 at their worst (Red/Purple, see the search above), so there is 10+
+# units of untouched, presumably-railed felt available; the shared piles now
+# sit at z=-9/-11, well clear of both the mats and the exposed cut-out edge.
+# lockAtRest() in global.lua is the second half of this fix.
+POS_PLAY = (-16.0, 1.6, -9.0)
+POS_ASIDE = (-25.0, 1.6, -9.0)
+POS_MISSION = (16.0, 1.6, -9.0)
+POS_DISCARD = (25.0, 1.6, -9.0)
+POS_REVEAL = (0.0, 1.6, -9.0)
+POS_BUTTON = (0.0, 1.3, -12.5)
 POS_PILIS = (0.0, 1.6, -5.0)
+POS_MTOGGLE = (16.0, 1.3, -12.5)
 
 _used_guids = set()
 
@@ -152,6 +174,13 @@ def seat_spot(x, z, out, side=0.0):
     return (max(-lim_x, min(lim_x, px)), max(-lim_z, min(lim_z, pz)))
 
 
+# Exact HandTrigger size from "The Gang [Scripted]" (3385562324) - real,
+# proven to catch a dealt hand on this table, not a guess like the 11x4 this
+# replaced. Every per-seat display tile (dibber/mat/tray) has to clear this
+# footprint - see the OUT_MAT/OUT_CTRL/SIDE_CTRL comment above.
+HAND_W, HAND_D = 9.6, 5.6
+
+
 def hand_zone(color, x, z):
     """Hand zone at a seat. rotY 180 throughout, matching the reference mod -
     every seat on this table looks across it the same way."""
@@ -162,7 +191,7 @@ def hand_zone(color, x, z):
         "Transform": {
             "posX": x, "posY": 2.0, "posZ": z,
             "rotX": 0.0, "rotY": rot_y, "rotZ": 0.0,
-            "scaleX": 11.0, "scaleY": 5.0, "scaleZ": 4.0,
+            "scaleX": HAND_W, "scaleY": 5.0, "scaleZ": HAND_D,
         },
         "Nickname": "", "Description": "", "GMNotes": "",
         "FogColor": color,
@@ -173,13 +202,24 @@ def hand_zone(color, x, z):
     return zone
 
 
-def custom_tile(image_url, pos, rot_y, nickname, gm_notes, scale, locked=True):
+def custom_tile(image_url, pos, rot_y, nickname, gm_notes, scale, locked=True,
+                aspect=1.0):
+    """A CustomTile Type 3 (Rectangle). TTS renders scaleX/scaleZ as literal,
+    independent width/depth - it does NOT infer them from the image. Passing
+    the same value for both, as an earlier version of this file did, squashes
+    every non-square plaque (the dibber, the button, the trick mat were all
+    wide rectangles) onto a square footprint: text and buttons sized for the
+    real canvas end up compressed into a squarer shape than they were drawn
+    for, which is what made them look oversized and cramped. `aspect` is
+    height/width of the source image; scaleZ is derived from it so the tile's
+    footprint actually matches what was drawn.
+    """
     return dict(BASE_FLAGS, **{
         "GUID": guid(), "Name": "Custom_Tile",
         "Transform": {
             "posX": pos[0], "posY": pos[1], "posZ": pos[2],
             "rotX": 0.0, "rotY": rot_y, "rotZ": 0.0,
-            "scaleX": scale, "scaleY": 1.0, "scaleZ": scale,
+            "scaleX": scale, "scaleY": 1.0, "scaleZ": scale * aspect,
         },
         "Nickname": nickname, "Description": "", "GMNotes": gm_notes,
         "Locked": locked, "Hands": False, "Grid": False, "Snap": False,
@@ -235,11 +275,14 @@ def pili_bag(image_url):
         "Transform": transform((POS_PILIS[0], POS_PILIS[1] + 1, POS_PILIS[2]), (0, 0, 0), 0.55),
         "Nickname": "Pili", "Description": "One trick off your bet = one Pili.",
         "GMNotes": "PILI:TOKEN",
-        # Stackable tokens get a generated quantity face on the reverse, which
-        # with no ImageSecondaryURL renders as a broken "2" side. Give the back
-        # the same art and drop stacking - the panel counts Pilis anyway.
+        # Every Custom_Token in ~450 checked across 28 real workshop mods leaves
+        # ImageSecondaryURL empty, Stackable or not - TTS mirrors the front onto
+        # the back by itself when it is empty and Stackable is false. An earlier
+        # attempt here explicitly set the same URL on both sides on the theory
+        # that Stackable alone caused a blank back; that was an unverified guess
+        # and the actual reported symptom (blank back) suggests it was wrong.
         "CustomImage": {
-            "ImageURL": image_url, "ImageSecondaryURL": image_url,
+            "ImageURL": image_url, "ImageSecondaryURL": "",
             "ImageScalar": 1.0, "WidthScale": 0.0,
             "CustomToken": {
                 "Thickness": 0.15, "MergeDistancePixels": 15.0,
@@ -261,46 +304,62 @@ def pili_bag(image_url):
 
 RULES = """PILI PILI - how a round runs
 
-Everything is on the table. The chilli button in the middle runs the round;
-the dibber in front of you sets your bet.
+Everything needed is on the table: a chilli button in the middle runs the
+round, and a dibber in front of every seat holds that player's bet.
 
-Guess how many tricks you will win, then win exactly that many.
+The idea of the whole game: guess how many of your cards will win their
+trick, then try to make exactly that many come true.
 
-1. PRESS THE CHILLI
-   The NEXT ROUND button scores the round just finished, sweeps every card back,
-   reshuffles, flips a new Mission and deals what it prints. Leftovers go face
-   down on the SET ASIDE spot - still in play for missions that draw a card.
-   Press it once at the start to begin.
+WHAT IS A "TRICK"? Once per round, everyone plays one card face up to the
+middle at the same time (well, one after another, but nobody needs to see
+yours before playing theirs). Whoever played the highest number takes all of
+those cards - that's a trick - and keeps them, face down, on their own mat.
+Then everyone plays again for the next trick, and so on until every card in
+your hand is gone.
+
+MISSIONS are OFF to start. Flip the MISSIONS tile by the mission deck to ON
+if you want them - see below.
+
+1. PRESS THE CHILLI TO DEAL
+   With Missions OFF, this deals 5 cards to everyone and you go straight to
+   step 2. With Missions ON, it also flips a Mission card first, which sets a
+   special rule for the round and how many cards to deal instead of 5 (see the
+   card, bottom-left). Leftover cards go face down on the SET ASIDE spot -
+   still in play for the one Mission that draws an extra card.
 
 2. BET
-   Starting with the DEALER (gold marker) and going round, set your bet on the
-   dibber in front of you with - and +. Bets are open - everyone sees them.
-   The bets must NOT total the number of cards dealt to each player, so there is
-   always at least one loser. The last person to bet cannot choose the number
-   that would make them match, and their dibber will refuse it.
+   Starting with the DEALER (gold marker) and going round the table, everyone
+   sets how many tricks they expect to win on their own dibber, using - and +.
+   Bets are open on purpose - watch the others and adjust your plan.
 
-3. PLAY TRICKS
-   The dealer leads. Everyone plays one card to the middle. Highest number takes
-   the trick - no suits, only the number. The Joker takes any value 0 to 56,
-   declared as you play it.
+   One rule to know: the bets must NOT add up to exactly the number of cards
+   dealt - there always has to be at least one loser. If you are the last to
+   bet and your number would make the total match, your dibber will refuse it;
+   pick a different number.
 
-   PUT THE TRICKS YOU WIN IN YOUR OWN PILE, on the mat in front of you. That is
-   how the button works out what you scored, so keep them there until the round
-   is scored.
+3. PLAY THE TRICKS
+   The dealer plays the first card of the round (nobody has won a trick yet,
+   so there is nothing else to go on). After that, whoever won the last trick
+   plays first for the next one. Play continues until every card is gone.
 
-4. NEXT ROUND
-   Press the chilli again. It counts each pile, works out tricks won, compares it
-   to your bet and drops a Pili in your tray for every trick you were out by.
-   Exactly right costs nothing.
+   STACK THE TRICKS YOU WIN ON YOUR OWN MAT, face down, and leave them there.
+   The chilli button counts your pile at the end of the round to work out how
+   many tricks you actually won - if you tidy them away early it can't score
+   correctly.
 
-   Missions that change the scoring (Cool Down, First & Last, Cursed Cards,
-   Shared Burn) are on you - just drag chillies in or out of your tray to match.
+4. SCORE AND START THE NEXT ROUND
+   Press the chilli again. For each seat it works out tricks won (cards on
+   your mat divided by the number of players) and compares it to your bet:
+   every trick you were over or under by drops one Pili into your tray. Bet
+   exactly right and nothing happens.
+
+   A handful of Missions change how Pilis are scored (Cool Down, First & Last,
+   Cursed Cards, Shared Burn) - the button can't see those, so just drag
+   chillies into or out of your own tray to match what the card says.
 
 5. WINNING
-   The moment somebody has 6 Pilis in their tray the game ends, and whoever has
-   the FEWEST wins.
-
-FIRST GAME? Ignore the Mission deck, deal 5 each and go straight to betting."""
+   The moment anyone's tray holds 6 Pilis, the game ends immediately and
+   whoever has the FEWEST Pilis wins."""
 
 CREDITS = """Pili Pili is designed by Ben, Martin & JB and published by ATM Gaming.
 This is an unofficial fan-made Tabletop Simulator implementation - buy the real
@@ -315,21 +374,21 @@ which direction the arrows point, which numbers are cursed. Those splits are a
 reconstruction. Edit missions.json and rerun build_save.py to correct them."""
 
 
-def build(missions, urls, out_dir):
+def build(missions, urls, out_dir, aspects=None):
+    aspects = aspects or {}
     objects = []
 
     # Seats. Everything except the hand zone is parked here and then moved into
     # place by layoutTable() at load, measured off the hand zones - so the hand
     # zone is the single source of truth for where a seat is, and correcting
     # SEATS re-lays the whole table automatically.
-    for colour, sx, sz in SEATS:
+    for colour, sx, sz, rot_y in SEATS:
         objects.append(hand_zone(colour, sx, sz))
-        rot_y = 180.0
 
         mx, mz = seat_spot(sx, sz, OUT_MAT)
         objects.append(custom_tile(urls["mat"], (mx, 1.2, mz), rot_y,
                                    f"{colour} tricks", f"PILI:MAT:{colour}",
-                                   scale=1.9))
+                                   scale=1.9, aspect=aspects.get("mat", 1.0)))
         objects.append(scripting_zone((mx, 2.2, mz), rot_y,
                                       f"PILI:TRICKS:{colour}",
                                       size=(4.4, 4.0, 4.0)))
@@ -337,7 +396,7 @@ def build(missions, urls, out_dir):
         bx, bz = seat_spot(sx, sz, OUT_CTRL, SIDE_CTRL)
         objects.append(custom_tile(urls["dibber"], (bx, 1.2, bz), rot_y,
                                    f"{colour} bid", f"PILI:DIBBER:{colour}",
-                                   scale=1.3))
+                                   scale=1.3, aspect=aspects.get("dibber", 1.0)))
 
         px, pz = seat_spot(sx, sz, OUT_CTRL, -SIDE_CTRL)
         objects.append(custom_tile(urls["tray"], (px, 1.2, pz), rot_y,
@@ -348,11 +407,15 @@ def build(missions, urls, out_dir):
                                       size=(3.2, 4.0, 3.2)))
 
     objects.append(custom_tile(urls["button"], POS_BUTTON, 0.0,
-                               "Next Round", "PILI:BUTTON", scale=2.0))
+                               "Next Round", "PILI:BUTTON", scale=2.0,
+                               aspect=aspects.get("button", 1.0)))
+    objects.append(custom_tile(urls["mtoggle"], POS_MTOGGLE, 0.0,
+                               "Missions toggle", "PILI:MTOGGLE", scale=1.4,
+                               aspect=aspects.get("mtoggle", 1.0)))
     # straight in front of the seat, in the gap the dibber and tray leave
     # offset to the side of the dealer's own dibber, level with it, so it
     # never competes with the mat sitting further out on the same line
-    dx, dz = seat_spot(SEATS[0][1], SEATS[0][2], OUT_CTRL, SIDE_CTRL * 2.2)
+    dx, dz = seat_spot(SEATS[0][1], SEATS[0][2], OUT_CTRL, SIDE_CTRL * 2.3)
     objects.append(dealer_marker(urls["dealer"], (dx, 1.6, dz)))
 
     # play deck: 1-55 plus the Joker
@@ -398,7 +461,7 @@ def build(missions, urls, out_dir):
         lua = fh.read()
     # the seating order is defined once, here, and injected rather than
     # duplicated in the Lua where it could drift out of sync
-    order = ", ".join('"%s"' % c for c, _, _ in SEATS)
+    order = ", ".join('"%s"' % c for c, _, _, _ in SEATS)
     header = ["-- generated by build_save.py; do not edit, change the Python",
               "SEAT_ORDER = {%s}" % order]
     for name, p in (("POS_PLAY", POS_PLAY), ("POS_ASIDE", POS_ASIDE),
@@ -491,7 +554,8 @@ def main():
                  "play_back": "play_back.png", "mission_back": "mission_back.png",
                  "pili": "pili_token.png", "dibber": "dibber.png",
                  "button": "round_button.png", "dealer": "dealer.png",
-                 "mat": "mat_tricks.png", "tray": "mat_pilis.png"}
+                 "mat": "mat_tricks.png", "tray": "mat_pilis.png",
+                 "mtoggle": "mission_toggle.png"}
         files = {k: os.path.join(art.ASSETS, v) for k, v in names.items()}
     else:
         print("rendering art ...")
@@ -517,7 +581,13 @@ def main():
         else:
             urls[key] = "file:///" + dst.replace("\\", "/")
 
-    path = build(missions, urls, out_dir)
+    from PIL import Image as _Image
+    aspects = {}
+    for key in ("mat", "dibber", "button", "mtoggle"):
+        with _Image.open(files[key]) as im:
+            aspects[key] = im.height / im.width
+
+    path = build(missions, urls, out_dir, aspects)
     print("save file:", path)
     if args.base_url:
         print("images:    served from", args.base_url)

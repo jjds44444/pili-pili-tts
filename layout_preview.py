@@ -48,6 +48,13 @@ def main(save_path, out_path):
     d.line([(MARGIN, cz), (w - MARGIN, cz)], fill=(255, 255, 255, 26))
 
     footprints = []
+    hand_zones = []  # checked separately below: overlapping a hand zone is
+                      # not a visual clash like two tiles overlapping, it is a
+                      # correctness bug - anything dropped there (a dealt
+                      # card, a paid-out Pili) can get swept into that
+                      # player's private hand instead of staying on the table.
+                      # This exact bug shipped once already because nothing
+                      # checked it.
     for o in save["ObjectStates"]:
         name = o["Name"]
         if name not in STYLE:
@@ -71,6 +78,8 @@ def main(save_path, out_path):
         p0, p1 = to_px(x - ex, z - ez), to_px(x + ex, z + ez)
         if kind == "seat":
             d.rectangle([p0, p1], outline=colour + (170,), width=2)
+            hand_zones.append((x - ex, z - ez, x + ex, z + ez,
+                               o.get("FogColor", "?") + " hand"))
         elif kind == "zone":
             d.rectangle([p0, p1], outline=colour + (200,), width=1)
         else:
@@ -95,6 +104,9 @@ def main(save_path, out_path):
             bx0, bz0, bx1, bz1, bn = footprints[j]
             if ax0 < bx1 and bx0 < ax1 and az0 < bz1 and bz0 < az1:
                 problems.append(f"overlap: {an}  x  {bn}")
+        for hx0, hz0, hx1, hz1, hn in hand_zones:
+            if ax0 < hx1 and hx0 < ax1 and az0 < hz1 and hz0 < az1:
+                problems.append(f"IN A HAND ZONE: {an}  x  {hn}")
 
     d.text((MARGIN, 8), os.path.basename(save_path)
            + f"   {len(save['ObjectStates'])} objects", font=small,

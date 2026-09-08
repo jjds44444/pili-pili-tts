@@ -139,7 +139,7 @@ for seat in seats:
     for pre in ("PILI:DIBBER:", "PILI:TRICKS:", "PILI:PILIS:",
                 "PILI:MAT:", "PILI:TRAY:"):
         check(f"  {pre}{seat}", notes.get(pre + seat) == 1)
-for single in ("PILI:BUTTON", "PILI:DEALER", "PILI:BAG"):
+for single in ("PILI:BUTTON", "PILI:DEALER", "PILI:BAG", "PILI:MTOGGLE"):
     check(f"  exactly one {single}", notes.get(single) == 1)
 
 check("turn system enabled", save["Turns"]["Enable"] is True)

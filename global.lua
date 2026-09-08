@@ -18,6 +18,7 @@ TAG_MAT = "PILI:MAT:"
 TAG_TRAY = "PILI:TRAY:"
 TAG_BUTTON = "PILI:BUTTON"
 TAG_DEALER = "PILI:DEALER"
+TAG_MTOGGLE = "PILI:MTOGGLE"
 
 -- POS_PLAY, POS_ASIDE, POS_MISSION, POS_REVEAL and POS_DISCARD are injected
 -- above this line by build_save.py, from the same constants that place the
@@ -32,11 +33,14 @@ COOL = {0.55, 0.85, 0.65}
 bids = {}          -- colour -> bet, nil until that player touches their dibber
 dealt = 0          -- cards dealt each this round
 busy = false       -- guard, the round sequence is asynchronous
+missionsOn = false -- off by default - the rulebook's own suggested first game
+                   -- skips missions entirely; flip the tile by the mission
+                   -- deck to turn them on
 
 -- ------------------------------------------------------------------ state --
 
 function onSave()
-    return JSON.encode({bids = bids, dealt = dealt})
+    return JSON.encode({bids = bids, dealt = dealt, missionsOn = missionsOn})
 end
 
 function onLoad(state)
@@ -45,6 +49,7 @@ function onLoad(state)
         if ok and s ~= nil then
             bids = s.bids or {}
             dealt = s.dealt or 0
+            missionsOn = s.missionsOn or false
         end
     end
     Wait.time(buildControls, 0.6)
@@ -141,12 +146,46 @@ function buildControls()
             tooltip = "Score this round, reshuffle, new mission, deal",
         })
     end
+
+    local mt = one(TAG_MTOGGLE)
+    if mt ~= nil then
+        mt.clearButtons()
+        mt.createButton({
+            click_function = "toggleMissions", function_owner = Global,
+            label = missionsLabel(),
+            position = {0, 0.3, 0.05}, width = 900, height = 380,
+            font_size = 260, color = {0.12, 0.11, 0.09}, font_color = {1, 0.95, 0.8},
+            tooltip = "Turn Mission cards on or off for future rounds",
+        })
+    end
+
     refreshDibbers()
+end
+
+function missionsLabel()
+    if missionsOn then return "ON" end
+    return "OFF"
+end
+
+function toggleMissions()
+    missionsOn = not missionsOn
+    local mt = one(TAG_MTOGGLE)
+    if mt ~= nil then mt.editButton({index = 1, label = missionsLabel()}) end
+    if missionsOn then
+        broadcastToAll("Missions ON from the next round - the mission deck " ..
+            "sets a special rule and how many cards are dealt.", GOLD)
+    else
+        broadcastToAll("Missions OFF from the next round - a plain deal of 5 " ..
+            "cards each, straight to betting.", GOLD)
+    end
 end
 
 function bidLabel(colour)
     local b = bids[colour]
-    if b == nil then return "?" end     -- "-" reads as a third minus button
+    if b == nil then return "" end      -- blank until this seat has bet -
+                                         -- "?" looked like a third minus
+                                         -- button crammed between the real
+                                         -- two, and read as upside-down
     return tostring(b)
 end
 
@@ -204,8 +243,11 @@ function adjustBid(obj, player_colour, delta)
         if bids[c] == nil then unset = unset + 1 else total = total + bids[c] end
     end
     if unset == 0 then
-        broadcastToAll("All bets in: " .. total .. " tricks bet, " .. dealt ..
-            " to win. The dealer leads.", GOLD)
+        broadcastToAll("All bets are in - " .. total .. " tricks bet between " ..
+            "you, " .. dealt .. " cards to play. Everyone plays one card " ..
+            "to the middle each trick: highest number wins it and takes it, " ..
+            "and whoever won leads (plays first) next. The dealer plays first " ..
+            "card of all, since nobody has won a trick yet.", GOLD)
     end
 end
 
@@ -301,6 +343,21 @@ end
 
 -- ------------------------------------------------------------------ round --
 
+-- Reported bug: the play deck kept sliding off the table. It was resting in
+-- the dealer's open cut-out (see the POS_* comment in build_save.py) with no
+-- anchor, so any nearby physics nudge could walk it toward the unrailed edge
+-- and off. Locking it at rest stops that; anything that will shuffle/deal/
+-- take from a locked object needs to unlock it first, since Locked blocks
+-- player drag but scripted calls are unaffected either way - unlocking is
+-- just defensive.
+function lockAtRest(obj)
+    if obj ~= nil then obj.Locked = true end
+end
+
+function unlockForOps(obj)
+    if obj ~= nil then obj.Locked = false end
+end
+
 function gather(tag, pos, thenShuffle, callback)
     local objs = cardsTagged(tag)
     if #objs == 0 then
@@ -308,9 +365,11 @@ function gather(tag, pos, thenShuffle, callback)
         return
     end
     local base = table.remove(objs, 1)
+    unlockForOps(base)
     base.setPosition({pos[1], pos[2] + 3.0, pos[3]})
     base.setRotation({0, 180, 180})
     for _, o in ipairs(objs) do
+        unlockForOps(o)
         local r = base.putObject(o)
         if r ~= nil then base = r end
     end
@@ -320,6 +379,7 @@ function gather(tag, pos, thenShuffle, callback)
             if thenShuffle and base.type == "Deck" then base.shuffle() end
             base.setPositionSmooth(pos)
             base.setRotationSmooth({0, 180, 180})
+            Wait.time(function() lockAtRest(base) end, 1.0)
         end
         if callback then callback() end
     end, 1.1)
@@ -351,11 +411,20 @@ function nextRound()
 end
 
 function sweepAndDeal(seated)
-    -- old mission out of the way
+    -- old mission out of the way, if one was in play
     local live = missionInPlay()
     if live ~= nil then
         live.setPositionSmooth(POS_DISCARD)
         live.setRotationSmooth({0, 180, 180})
+    end
+
+    if not missionsOn then
+        -- rulebook's own suggested first game: skip missions, deal 5 each,
+        -- straight to betting. The mission deck is left completely alone.
+        gather(TAG_PLAY, POS_PLAY, true, function()
+            dealCards(seated, nil, 5)
+        end)
+        return
     end
 
     gather(TAG_PLAY, POS_PLAY, true, function()
@@ -365,14 +434,24 @@ function sweepAndDeal(seated)
             busy = false
             return
         end
+        unlockForOps(mdeck)
         if mdeck.type == "Deck" then
             mdeck.takeObject({position = POS_REVEAL, rotation = {0, 180, 0}, smooth = true})
         else
             mdeck.setPositionSmooth(POS_REVEAL)
             mdeck.setRotationSmooth({0, 180, 0})
         end
+        Wait.time(function() lockAtRest(biggest(TAG_MISSION)) end, 1.0)
 
-        Wait.time(function() dealFromMission(seated) end, 1.4)
+        Wait.time(function()
+            local m = missionInPlay()
+            local n = 5
+            if m ~= nil then
+                n = tonumber(string.match(m.getDescription(), "%[deal (%d+)%]")) or 5
+            end
+            local name = m and m.getName() or "no mission"
+            dealCards(seated, name, n)
+        end, 1.4)
     end)
 end
 
@@ -389,19 +468,14 @@ function missionInPlay()
     return best
 end
 
-function dealFromMission(seated)
-    local m = missionInPlay()
-    local n = 5
-    if m ~= nil then
-        n = tonumber(string.match(m.getDescription(), "%[deal (%d+)%]")) or 5
-    end
-
+function dealCards(seated, missionName, n)
     local deck = biggest(TAG_PLAY)
     if deck == nil or deck.type ~= "Deck" then
         broadcastToAll("The play deck did not come back together.", HOT)
         busy = false
         return
     end
+    unlockForOps(deck)
 
     local avail = countIn(deck)
     local maxn = math.floor(avail / #seated)
@@ -430,11 +504,16 @@ function dealFromMission(seated)
             if rest ~= nil then
                 rest.setPositionSmooth(POS_ASIDE)
                 rest.setRotationSmooth({0, 180, 180})
+                Wait.time(function() lockAtRest(biggest(TAG_PLAY)) end, 1.0)
             end
             passDealer()
-            local name = m and m.getName() or "no mission"
-            broadcastToAll("Mission: " .. name .. ".  " .. n ..
-                " cards each. Betting starts with the dealer.", GOLD)
+
+            local label = missionName and ("Mission: " .. missionName .. ".  ")
+                or ""
+            broadcastToAll(label .. n .. " cards each. Starting with the " ..
+                "dealer, everyone bets how many of their " .. n ..
+                " tricks they think they will win - use the -/+ on your " ..
+                "own dibber.", GOLD)
             busy = false
         end, 1.0)
     end, 0.6)
@@ -484,5 +563,6 @@ function passDealer()
         marker.setPositionSmooth({q.x, q.y + 1.2, q.z})
     end
     Turns.turn_color = nxt
-    broadcastToAll(nxt .. " deals, bets first and leads.", COOL)
+    broadcastToAll(nxt .. " is dealer this round: " .. nxt ..
+        " bets first, and plays the first card once betting is done.", COOL)
 end

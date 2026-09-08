@@ -514,6 +514,11 @@ def generate(missions, progress=True):
     dealer_token().save(p, "PNG", optimize=True)
     out["dealer"] = p
 
+    p = os.path.join(ASSETS, "mission_toggle.png")
+    plaque(500, 260, "MISSIONS", ground=(26, 24, 20), accent=(232, 196, 92),
+           title_frac=0.24).save(p, "PNG", optimize=True)
+    out["mtoggle"] = p
+
     # mats are backdrops, so they stay quiet: dark, thin border, small type
     p = os.path.join(ASSETS, "mat_tricks.png")
     plaque(700, 500, "TRICKS WON", ground=(24, 23, 22), accent=(74, 70, 66),
