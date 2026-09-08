@@ -85,14 +85,18 @@ for o in save["ObjectStates"]:
             urls.add(c["CustomImage"]["ImageURL"])
 
 
-def check_url(u, expect_prefix):
+def check_url(u, expect_prefixes):
     if u.startswith("file:///"):
         local = u[len("file:///"):]
         check(f"  {os.path.basename(local)} exists", os.path.isfile(local))
         return
     # A save that points at a 404 loads fine and shows a blank card (or, for
     # a PDF, an object that does nothing when clicked) - this is the failure
-    # TTS will not tell you about, so actually fetch it.
+    # TTS will not tell you about, so actually fetch it. raw.githubusercontent
+    # serves PDFs as application/octet-stream rather than application/pdf
+    # (confirmed: real %PDF bytes, exact byte count, just an untagged content
+    # type) - checked prefixes are a tuple so that quirk doesn't read as a
+    # failure here.
     name = u.rsplit("/", 1)[-1]
     try:
         req = urllib.request.Request(u, method="HEAD",
@@ -100,7 +104,7 @@ def check_url(u, expect_prefix):
         with urllib.request.urlopen(req, timeout=20) as r:
             ctype = r.headers.get("Content-Type", "")
             check(f"  {name} reachable ({ctype})",
-                  r.status == 200 and ctype.startswith(expect_prefix),
+                  r.status == 200 and ctype.startswith(expect_prefixes),
                   f"HTTP {r.status}")
     except Exception as e:                                      # noqa: BLE001
         check(f"  {name} reachable", False, f"{type(e).__name__}: {e}")
@@ -109,7 +113,7 @@ def check_url(u, expect_prefix):
 for u in sorted(urls):
     check_url(u, "image/")
 for u in sorted(pdf_urls):
-    check_url(u, "application/pdf")
+    check_url(u, ("application/pdf", "application/octet-stream"))
 
 print("\nrequired fields")
 # TTS writes these on every object it serialises. Omitting one makes the save
