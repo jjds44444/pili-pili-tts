@@ -111,6 +111,19 @@ Positions are clamped to `FELT_X`/`FELT_Z` (an estimate, see `layout_preview.py`
 as a safety net, since a large `SIDE_CTRL` can walk a corner seat's objects past
 the felt edge.
 
+**That estimate is measurably too generous in the curved end-caps specifically**
+(`|x| > FELT_X - FELT_Z`). The rulebook object was placed at distance 15.8 from a
+cap centre and visibly clipped the rail in play, while `POS_DISCARD` at distance
+10.8 has rendered fine in every screenshot so far - the real boundary sits
+somewhere between those two numbers, unknown more precisely than that.
+`layout_preview.py`'s check uses the same optimistic `FELT_Z` and will wave
+through a placement out there with false confidence, exactly as it did for the
+rulebook. **For anything new near a corner: don't compute a fresh position from
+the felt-boundary formula - anchor it close to an existing object already proven
+correct on screen** (or better, put it on the straight side, `|x|` comfortably
+under `FELT_X - FELT_Z`, where the boundary is a plain `|z| <= FELT_Z` check with
+no cap-radius guesswork at all - that's where the rulebook ended up).
+
 **`custom_tile()` derives `scaleZ` from the source image's real aspect ratio**
 (read from the actual PNG file, via `aspects` computed in `main()`) rather than
 taking one `scale` value for both axes. TTS's `CustomTile.Type: 3` (Rectangle)

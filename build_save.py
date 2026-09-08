@@ -484,7 +484,16 @@ def build(missions, urls, out_dir, aspects=None):
     objects.append(deck(2, miss_cards, "Missions", "PILI:MISSION", cd_miss, POS_MISSION))
 
     objects.append(pili_bag(urls["pili"]))
-    objects.append(rulebook_pdf(urls["rulebook"], (-32.0, 1.3, -9.0), rot_y=180.0))
+    # Previously sat at x=-32, deep in the curved end-cap, and clipped the
+    # rail - proof the FELT_Z=19 cap-radius estimate is too generous out
+    # there (POS_DISCARD at distance 10.8 from the cap centre is fine;
+    # x=-32 at distance 15.8 clips - the real boundary is somewhere between,
+    # and guessing a second time inside that same uncertain region isn't
+    # worth it). Moved onto the STRAIGHT side instead (|x| well under 19),
+    # where the boundary is a plain |z| <= FELT_Z check with no cap-radius
+    # guesswork at all. rot_y flipped from 180 to 0 - the cover was
+    # reported backwards; still unverified until it's seen in-game.
+    objects.append(rulebook_pdf(urls["rulebook"], (8.0, 1.3, -15.0), rot_y=0.0))
 
     # snap points for played cards, ringed tightly around the middle
     snaps = []
