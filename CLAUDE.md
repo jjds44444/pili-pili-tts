@@ -62,38 +62,49 @@ resolution. Dropping `SS` to 1 makes iteration fast but looks bad.
 
 ## Table layout
 
+**The table is `Table_Custom` (Custom Rectangle), not the poker table.** It
+was switched from `Table_Poker` because that table's stadium shape (straight
+sides, semicircular end-caps) drove most of the layout bugs below: per-seat
+rotation guesswork for the two corner seats, a felt-boundary estimate that
+was measurably wrong specifically in the curved caps, and a dealer cut-out
+that was the only free space for shared piles *and* the only unrailed table
+edge. `Table_Custom` is a plain rectangle - straight boundary, no corners in
+play (seats sit on the two long sides only, same as the reference mod), and
+every edge is a normal rail. See git history for the old `SEATS`/
+`felt_clamp()`/`DIR_CENTRE` machinery this replaced if any of that reasoning
+is needed again. `TableURL` (in `urls["felt"]`, built by `felt_image()` in
+`build_save.py`) is currently a plain placeholder colour, not real tribal art
+- a textured felt matching `art.py`'s palette is a follow-up, not done yet.
+
 Every seat's dibber, trick mat and Pili tray is computed at build time by
 `seat_spot()` in `build_save.py`, off `SEATS` - coordinates (and, per seat, a
-display rotation) lifted from real Tabletop Simulator mods that seat players
-on this exact table (currently 6, from "The Gang [Scripted]", workshop id
-3385562324), not derived or guessed. If the player count changes, replace
+shared display/HandTrigger rotation) lifted from a real Tabletop Simulator mod
+seating players on this exact table (currently 6, from "The Settlers of
+Catan", workshop id 1010436537647666695, which uses this exact 3-per-long-side
+arrangement), not derived or guessed. If the player count changes, replace
 `SEATS` with coordinates from a workshop mod seating that many players on
-`Table_Poker` rather than inventing new ones - guessed coordinates were tried
-twice here and were wrong both times. `HAND_W`/`HAND_D` (9.6 x 5.6) are that
-same mod's real HandTrigger size, not a guess either - see the paragraph below
-on why that matters.
+`Table_Custom` rather than inventing new ones - guessed coordinates were tried
+twice on the old poker table and were wrong both times. `HAND_W`/`HAND_D`
+(15.3 x 6.4) are that same mod's real HandTrigger size, not a guess either -
+see the paragraph below on why that matters.
 
-The 4th field in each `SEATS` entry is the rotation for that seat's DISPLAY
-tiles only (dibber/mat/tray/dealer) - the HandTrigger itself always stays at
-180 regardless, matching every real seat on this table, since that governs how
-a dealt hand fans out and has nothing to do with what a human reads. The four
-seats on the table's straight edge share 180 for both; the two corner seats
-(Red, Purple) wrap around at a visibly different angle and were inheriting
-that same 180 until this looked wrong in play - they now get their own
-rotation, computed once by facing each toward the true centre of the felt
-(see the git history for the numbers, or just recompute: face each seat's
-tiles toward roughly `(0, -2)` and it reproduces 180 for the straight-edge
-seats and something sensible for the corners).
+The 4th field in each `SEATS` entry is the rotation shared by that seat's
+DISPLAY tiles (dibber/mat/tray/dealer) *and* its HandTrigger - unlike the old
+poker table, where the HandTrigger stayed at a constant 180 regardless of the
+display rotation, the reference mod here uses a HandTrigger rotY that matches
+each row's own facing (0 for the south row, 180 for the north). Because every
+seat on this table sits on a straight edge facing straight in, there is no
+per-seat exception to track (unlike the old poker table's two corner seats,
+which needed their own rotation computed by facing the felt centre) - it's
+just 0 or 180 depending which row a seat is in.
 
-`seat_spot()` deliberately uses two different reference points for PLACEMENT
-(as opposed to the rotation above, which is separate), and collapsing them
-back into one is the mistake to avoid re-making:
-- `DIR_CENTRE` is a point placed far off the table, used only to pick each
-  seat's "inward" direction. It has to be distant - using the real, nearby
-  play-area centre made every seat's objects converge on that one nearby spot,
-  crowding each other out the further out they sat.
-- `PLAY_CENTRE` is the real centre of the play area, used only to position the
-  snap-point ring for played cards.
+`seat_spot()`'s "inward" direction is just straight toward `z = 0` for every
+seat - the old poker table's `DIR_CENTRE` (a distant reference point, used
+only so seats fanned round a curved edge didn't have their inward directions
+converge and crowd each other) has no purpose on a table where every seat
+already faces directly at the centre, and is gone. `PLAY_CENTRE` remains: the
+real centre of the play area, used only to position the snap-point ring for
+played cards.
 
 **The dibber and Pili tray used to sit inside their own seat's HandTrigger.**
 Anything landing there - a dealt card, a Pili paid out by the script - can get
@@ -105,24 +116,23 @@ zone with margin - if you change any of `SEATS`, `HAND_W`/`HAND_D`, or a
 tile's own scale, re-run that search rather than eyeballing it; the numbers
 that look fine in `layout_preview.py`'s 2D top-down view can still be inside
 a hand zone; that class of bug is exactly what the next paragraph's check is
-for.
+for. On this table the felt edge turns out to be the binding constraint, not
+the hand zone: each hand zone's near edge already sits well past the felt
+boundary (`HAND_D` means players' hands hover past the rail, into their lap),
+so clearing the felt automatically clears the hand zone too - still worth
+re-running the search rather than assuming that stays true after a change.
 
-Positions are clamped to `FELT_X`/`FELT_Z` (an estimate, see `layout_preview.py`)
-as a safety net, since a large `SIDE_CTRL` can walk a corner seat's objects past
-the felt edge.
-
-**That estimate is measurably too generous in the curved end-caps specifically**
-(`|x| > FELT_X - FELT_Z`). The rulebook object was placed at distance 15.8 from a
-cap centre and visibly clipped the rail in play, while `POS_DISCARD` at distance
-10.8 has rendered fine in every screenshot so far - the real boundary sits
-somewhere between those two numbers, unknown more precisely than that.
-`layout_preview.py`'s check uses the same optimistic `FELT_Z` and will wave
-through a placement out there with false confidence, exactly as it did for the
-rulebook. **For anything new near a corner: don't compute a fresh position from
-the felt-boundary formula - anchor it close to an existing object already proven
-correct on screen** (or better, put it on the straight side, `|x|` comfortably
-under `FELT_X - FELT_Z`, where the boundary is a plain `|z| <= FELT_Z` check with
-no cap-radius guesswork at all - that's where the rulebook ended up).
+Positions are clamped to `FELT_X`/`FELT_Z` (44.0 x 26.0 - from a community
+measurement of the Custom Rectangle table, 7'4" x 4'4" in TTS's inches-as-units
+convention; not yet cross-checked against an in-game ruler measurement, so
+treat it as a good estimate rather than exact until someone does). Unlike the
+old poker table, this is a plain rectangle with no curved end-caps to
+approximate, so `felt_clamp()`'s `|x| <=`/`|z| <=` check is exact given that
+measurement, not an approximation `layout_preview.py` has to wave through with
+false confidence - there is no equivalent of the old corner-cap caveat to
+repeat here. If a future in-game check finds the real boundary sits elsewhere,
+update `FELT_X`/`FELT_Z` in both `build_save.py` and `layout_preview.py`
+together (they must match) rather than special-casing individual objects.
 
 **`custom_tile()` derives `scaleZ` from the source image's real aspect ratio**
 (read from the actual PNG file, via `aspects` computed in `main()`) rather than
@@ -170,15 +180,17 @@ skip missions). `sweepAndDeal()` branches on it before touching the mission
 deck at all when off; the mission deck is completely untouched in that case,
 not just hidden.
 
-**Resting community piles are locked, not just positioned.** The play deck
-was reported drifting off the table entirely - its home sat deep in the
-dealer's open cut-out, which real poker tables leave unrailed on at least one
-side, so a physics nudge from anything nearby could walk it right off the
-felt. `lockAtRest()`/`unlockForOps()` in `global.lua` pin every shared pile
-(play deck, leftover "aside" pile, mission deck, discard) once it settles, and
-unlock it again immediately before the next scripted `.shuffle()`/`.deal()`/
-`.takeObject()` call. Add a new shared pile without this pattern and expect it
-to eventually walk off the table the same way.
+**Resting community piles are locked, not just positioned.** On the old poker
+table the play deck was reported drifting off the table entirely - its home
+sat deep in the dealer's open cut-out, the one edge that table left unrailed,
+so a physics nudge from anything nearby could walk it right off the felt.
+`Table_Custom` is railed on every edge, so that specific failure mode
+shouldn't recur, but `lockAtRest()`/`unlockForOps()` in `global.lua` still pin
+every shared pile (play deck, leftover "aside" pile, mission deck, discard)
+once it settles, and unlock it again immediately before the next scripted
+`.shuffle()`/`.deal()`/`.takeObject()` call, as a second line of defence. Add
+a new shared pile without this pattern and it can still walk off under a
+strong-enough nudge, rail or no rail.
 
 **Every `Custom_Token`'s `ImageSecondaryURL` is empty, always, even for
 one-shot tokens with a genuinely blank back** - confirmed against ~450
@@ -245,8 +257,19 @@ list of bugs - oversized/cramped tiles, Pilis at risk of landing in a hand, a
 blank token back, the dealer marker sitting on the dibber, corner seats facing
 the wrong way, and the play deck drifting off the table - all root-caused
 against real data (28 workshop mods' worth of genuine TTS objects, not more
-guessing) and fixed. **None of those fixes have themselves been played yet.**
-Trust a new report from an actual game over assuming this list is now clean.
+guessing) and fixed, on the old `Table_Poker`. **None of those fixes have
+themselves been played yet.** Trust a new report from an actual game over
+assuming this list is now clean.
+
+**The switch to `Table_Custom` has not been loaded in TTS at all yet** - only
+checked with `validate.py` and `layout_preview.py`. Those catch structural
+problems (bad `CardID`s, missing fields, overlaps, off-felt placement, objects
+inside a hand zone) but not everything a real load would: whether the felt
+placeholder image actually renders instead of coming up blank, whether the
+Custom Rectangle table's real in-game boundary matches the `FELT_X`/`FELT_Z`
+estimate above, and which seat colour physically ends up at which of the six
+positions (the colour-to-seat mapping was chosen, not confirmed against TTS's
+own seat-colour assignment for this table).
 
 Still not confirmed even before this pass: a full round end-to-end (bidding
 through scoring through the 6-Pili game-over check), the "bets must not total

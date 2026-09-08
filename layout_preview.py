@@ -2,8 +2,8 @@
 
     python layout_preview.py <PiliPili.json> [out.png]
 
-Draws the poker table's felt, every seat, and each object at its real position
-and footprint. Overlaps and things hanging off the felt are obvious here and
+Draws the table's felt, every seat, and each object at its real position and
+footprint. Overlaps and things hanging off the felt are obvious here and
 almost impossible to judge from a list of coordinates.
 """
 import json
@@ -12,24 +12,15 @@ import sys
 
 from PIL import Image, ImageDraw, ImageFont
 
-# Table_Poker's felt, from the extent of the objects in "The Gang" mods.
-# It is a STADIUM shape - straight sides, semicircular ends - not a rectangle:
-# the corner seats sit in the curved end-caps, past FELT_X - FELT_Z. A naive
-# rectangular bounds check (what this file used to do) allows points in that
-# rectangle's corners that are actually off the real oval table - which is
-# exactly how a corner seat's mat clipped visibly off the felt in play while
-# this check kept reporting everything fine. Must match felt_clamp() in
-# build_save.py or this stops being a meaningful check on it.
-FELT_X, FELT_Z = 38.0, 19.0
-STRAIGHT = FELT_X - FELT_Z
+# Table_Custom's felt: a plain rectangle (see FELT_X/FELT_Z in build_save.py -
+# must match, or this stops being a meaningful check on it). Unlike the old
+# Table_Poker this replaced, there is no stadium shape and no curved end-caps
+# to approximate - a straight bounds check is exact here.
+FELT_X, FELT_Z = 44.0, 26.0
 
 
 def on_felt(x, z):
-    if abs(x) <= STRAIGHT:
-        return abs(z) <= FELT_Z
-    import math
-    cx = math.copysign(STRAIGHT, x)
-    return math.hypot(x - cx, z) <= FELT_Z
+    return abs(x) <= FELT_X and abs(z) <= FELT_Z
 PX = 18                      # pixels per TTS unit
 MARGIN = 30
 
@@ -58,8 +49,8 @@ def main(save_path, out_path):
     def to_px(x, z):
         return (MARGIN + (x + FELT_X) * PX, MARGIN + (z + FELT_Z) * PX)
 
-    d.rounded_rectangle([to_px(-FELT_X, -FELT_Z), to_px(FELT_X, FELT_Z)],
-                        FELT_Z * PX, fill=(38, 92, 46), outline=(70, 130, 76), width=2)
+    d.rectangle([to_px(-FELT_X, -FELT_Z), to_px(FELT_X, FELT_Z)],
+               fill=(38, 92, 46), outline=(70, 130, 76), width=2)
     cx, cz = to_px(0, 0)
     d.line([(cx, MARGIN), (cx, h - MARGIN)], fill=(255, 255, 255, 26))
     d.line([(MARGIN, cz), (w - MARGIN, cz)], fill=(255, 255, 255, 26))

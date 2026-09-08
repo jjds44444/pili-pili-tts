@@ -29,81 +29,69 @@ DEFAULT_BASE_URL = "https://raw.githubusercontent.com/jjds44444/pili-pili-tts/ma
 import art  # noqa: E402  (lives next to this script)
 
 
-# Seats on Table_Poker, in world units, lifted verbatim from the workshop mod
-# "The Gang [Scripted]" (3385562324) - a working 6-player game on this exact
-# table. They run along the +z long side and wrap slightly round the two
-# corners; the entire -z half (the dealer's cut-out) is free for the play area,
-# and with only 6 seats there is no crowding near the corners either.
-# 4th field: rotY for this seat's DISPLAY tiles (dibber/mat/tray/dealer) - not
-# the HandTrigger itself, which stays at the reference mod's 180 for every seat
-# regardless (that governs how a dealt hand fans out, not what a human reads).
-# The middle four sit on a near-straight run of the table edge and share one
-# facing; Red and Purple wrap around the corner and were inheriting that same
-# 180 despite sitting at a visibly different angle - computed by facing each
-# toward the true centre of the felt instead.
+# Seats on Table_Custom (Custom Rectangle), in world units, lifted verbatim
+# from "The Settlers of Catan" workshop mod (1010436537647666695) - a real
+# 6-player game on this exact table, using this exact 3-per-long-side
+# arrangement. Replaces Table_Poker: that table's stadium shape (straight
+# sides, curved end-caps) drove most of the corner-facing, felt-boundary and
+# crowding problems below - see git history for the old SEATS/felt_clamp/
+# DIR_CENTRE machinery this replaced. This table is a plain rectangle with
+# seats on the two long sides only (the short ends are free, same role the
+# poker table's dealer cut-out used to play) - no corners, no curved caps, no
+# per-seat rotation guesswork.
+# 4th field: rotY, shared by DISPLAY tiles (dibber/mat/tray/dealer) *and* the
+# HandTrigger - unlike the poker table, the reference mod uses a HandTrigger
+# rotY matching each row's own facing (0 for the south row, 180 for the
+# north), not one constant, so there is no split to track here.
 SEATS = [
-    ("Red",    -34.07,  7.91, 286.2),
-    ("Orange", -21.77, 14.48, 180.0),
-    ("White",   -6.85, 14.42, 180.0),
-    ("Green",    6.83, 14.45, 180.0),
-    ("Blue",    21.04, 14.32, 180.0),
-    ("Purple",  34.07,  7.91,  73.8),
+    ("Red",    -23.67, -34.43,   0.0),
+    ("Orange",   0.00, -34.43,   0.0),
+    ("White",   23.67, -34.26,   0.0),
+    ("Green",   23.67,  34.45, 180.0),
+    ("Blue",     0.00,  34.45, 180.0),
+    ("Purple", -23.67,  34.43, 180.0),
 ]
 
 # The real centre of the play area, where the snap-point ring for played
-# cards sits.
-PLAY_CENTRE = (0.0, -6.0)
+# cards sits. With seats on only the two long sides, "inward" is just
+# straight toward z=0 for every seat - no distant reference point needed to
+# keep seats' lanes from converging (the poker table's DIR_CENTRE hack, now
+# gone - see seat_spot()).
+PLAY_CENTRE = (0.0, 0.0)
 
-# A far-away point used ONLY to pick each seat's "inward" direction. Using the
-# real PLAY_CENTRE for this made every seat's controls point at one nearby
-# spot, so objects from different seats converged and crowded each other near
-# the middle the further out they sat. A distant reference point makes inward
-# directions nearly parallel across seats instead, which is what actually
-# gives every seat's own cluster of objects its own lane.
-DIR_CENTRE = (0.0, -500.0)
+# Exact HandTrigger size from "The Settlers of Catan" - real, not a guess.
+# Every per-seat display tile (dibber/mat/tray) has to clear this footprint.
+HAND_W, HAND_D = 15.3, 6.4
 
-# The dibber/tray used to sit inside the seat's own HandTrigger footprint
-# (9.6 x 5.6, from the reference mod - see hand_zone()) - anything dropped
-# there, including Pilis paid out by the script, could get swept into that
-# player's private hand instead of staying on the table. These values were
-# found by search, over the REAL stadium-shaped felt (not a rectangle - see
-# felt_clamp below) and the tiles' real (now square, see custom_tile) sizes,
-# for the smallest OUT_MAT/OUT_CTRL under which every tile still clears every
-# hand zone, the true felt edge, and every other tile with a small margin.
-# The mat sits this far out because the hand zone it must clear is a genuinely
-# large, real 9.6 x 5.6 box - shrinking HAND_W/HAND_D below the reference
-# mod's real value would let it sit closer, at the cost of a smaller, less
-# reliable card-catching area.
-# Re-searched with a thinner (but still real, 0.5-unit) required margin
-# instead of maximum comfort - the previous pass optimised for headroom and
-# ended up reading as "too far from the seat" in play, even though nothing
-# was actually wrong with it.
-OUT_MAT = 8.25        # trick mat, in front of the seat
-OUT_CTRL = 4.5         # dibber and Pili tray, between the seat and the mat
-SIDE_CTRL = 1.75       # and apart from each other
+# OUT_MAT/OUT_CTRL/SIDE_CTRL found by the same kind of search the poker table
+# used (see git history for that script) - over this table's real rectangular
+# felt (see FELT_X/FELT_Z below) and the tiles' real square footprints (see
+# custom_tile), for the smallest OUT_MAT/OUT_CTRL under which every tile
+# clears every hand zone, the felt edge, and every other tile with a 0.5-unit
+# margin. On this table the felt edge is the binding constraint, not the hand
+# zone: HAND_D means each hand zone's near edge already sits well past the
+# felt boundary (players' hands hover past the rail, into their lap), so
+# clearing the felt automatically clears the hand zone too.
+OUT_MAT = 16.3         # trick mat, in front of the seat, toward the centre
+OUT_CTRL = 12.1        # dibber and Pili tray, between the seat and the mat
+SIDE_CTRL = 1.7        # and apart from each other
 
-# Reported bug: the play deck kept drifting toward the table edge and falling
-# off. z=-15/-16.5 sat deep in the dealer's cut-out, which real poker tables
-# leave unrailed on at least one side - there is nothing there to stop a
-# nudged deck sliding off the felt entirely. Trick mats reach no further than
-# z=-4.1 at their worst (Red/Purple, see the search above), so there is 10+
-# units of untouched, presumably-railed felt available; the shared piles now
-# sit at z=-9/-11, well clear of both the mats and the exposed cut-out edge.
-# lockAtRest() in global.lua is the second half of this fix.
-POS_PLAY = (-16.0, 1.6, -9.0)
-POS_ASIDE = (-25.0, 1.6, -9.0)
-POS_MISSION = (16.0, 1.6, -9.0)
-POS_DISCARD = (25.0, 1.6, -9.0)
-POS_REVEAL = (0.0, 1.6, -9.0)
-POS_BUTTON = (0.0, 1.3, -12.5)
-POS_PILIS = (0.0, 1.6, -5.0)
-# Was (16, -12.5): visibly clipped into the table/rail in play. POS_BUTTON
-# sits at the same z=-12.5 but x=0 and is fine, which points at the rail
-# curving inward more at higher |x| (consistent with the corner-cap
-# inaccuracy noted above) rather than z=-12.5 itself being the problem.
-# Moved to lower |x|, comfortably inside the straight-side, no-guesswork
-# region rather than re-testing the same edge a second time.
-POS_MTOGGLE = (9.0, 1.3, -9.0)
+# Shared piles and controls. With seats on only the north/south edges, the
+# east/west flanks (|x| beyond the seats' own 23.67, out to the felt edge)
+# are as free of hand zones and mats as the poker table's dealer cut-out
+# used to be - without that cut-out being the only unrailed, exposed edge on
+# the table (every edge here is a plain straight rail), so there is no
+# repeat of the play-deck-drifting-off bug to guard against by placement
+# alone. lockAtRest() in global.lua is kept regardless, as a second line of
+# defence against any pile getting nudged.
+POS_PLAY = (-30.0, 1.6, -8.0)
+POS_ASIDE = (-30.0, 1.6, 8.0)
+POS_MISSION = (30.0, 1.6, -8.0)
+POS_DISCARD = (30.0, 1.6, 8.0)
+POS_REVEAL = (0.0, 1.6, 0.0)
+POS_BUTTON = (0.0, 1.3, 10.0)
+POS_PILIS = (0.0, 1.6, -10.0)
+POS_MTOGGLE = (12.0, 1.3, 0.0)
 
 _used_guids = set()
 
@@ -166,60 +154,35 @@ def deck(deck_id, cards, nickname, gm_notes, cd, pos, rot=(0, 180, 180)):
     })
 
 
-def seat_frame(x, z):
-    """A seat's inward direction (see DIR_CENTRE above) and its tangent."""
-    dx, dz = DIR_CENTRE[0] - x, DIR_CENTRE[1] - z
-    n = math.hypot(dx, dz) or 1.0
-    inward = (dx / n, dz / n)
-    tangent = (-inward[1], inward[0])
-    return inward, tangent
+# The table is a plain rectangle with seats on the north/south long sides
+# only, so every seat's "inward" direction is simply straight toward z=0 -
+# unlike the old poker table (seats fanned round a curved edge), there is no
+# convergence problem to work around with a distant reference point.
+def seat_spot(x, z, out, side=0.0):
+    inward = -1.0 if z > 0 else 1.0
+    return felt_clamp(x + side, z + inward * out)
 
 
-# Table_Poker's felt, estimated from real objects in "The Gang" workshop mods
-# (see layout_preview.py). It is a STADIUM shape - straight sides, semicircular
-# ends - not a rectangle: Red and Purple sit in the curved end-caps (|x| well
-# past FELT_X - FELT_Z). Clamping to a rectangular bounding box, which an
-# earlier version of this file did, allows points in that box's CORNERS that
-# are outside the real oval table entirely - confirmed by their trick mats
-# visibly clipping off the felt in play. FELT_MARGIN is how far inside the
-# true edge every clamped point must stay.
-FELT_X, FELT_Z, FELT_MARGIN = 38.0, 19.0, 2.0
+# Table_Custom's felt is a plain rectangle - measured at 7'4" x 4'4"
+# (community measurement, see PR description / git history), which in TTS's
+# inches-as-units convention is FELT_X x FELT_Z below. No stadium shape, no
+# curved end-caps, no per-corner guesswork: unlike the old Table_Poker
+# constants this replaced, a straight |x| <= / |z| <= check is exact here,
+# not an approximation layout_preview.py has to wave through with false
+# confidence.
+FELT_X, FELT_Z, FELT_MARGIN = 44.0, 26.0, 2.0
 
 
 def felt_clamp(x, z, margin=FELT_MARGIN):
-    """Pull (x, z) back onto the stadium-shaped felt, `margin` inside its edge."""
-    straight = FELT_X - FELT_Z          # |x| below this: bounded by a flat side
-    lim_z = FELT_Z - margin
-    if abs(x) <= straight:
-        return x, max(-lim_z, min(lim_z, z))
-    # in one of the rounded end-caps: clamp radially around its centre
-    cx = math.copysign(straight, x)
-    dx, dz = x - cx, z
-    r = math.hypot(dx, dz)
-    lim_r = FELT_Z - margin
-    if r <= lim_r or r == 0:
-        return x, z
-    return cx + dx / r * lim_r, dz / r * lim_r
+    lim_x, lim_z = FELT_X - margin, FELT_Z - margin
+    return max(-lim_x, min(lim_x, x)), max(-lim_z, min(lim_z, z))
 
 
-def seat_spot(x, z, out, side=0.0):
-    inward, tangent = seat_frame(x, z)
-    px = x + inward[0] * out + tangent[0] * side
-    pz = z + inward[1] * out + tangent[1] * side
-    return felt_clamp(px, pz)
-
-
-# Exact HandTrigger size from "The Gang [Scripted]" (3385562324) - real,
-# proven to catch a dealt hand on this table, not a guess like the 11x4 this
-# replaced. Every per-seat display tile (dibber/mat/tray) has to clear this
-# footprint - see the OUT_MAT/OUT_CTRL/SIDE_CTRL comment above.
-HAND_W, HAND_D = 9.6, 5.6
-
-
-def hand_zone(color, x, z):
-    """Hand zone at a seat. rotY 180 throughout, matching the reference mod -
-    every seat on this table looks across it the same way."""
-    rot_y = 180.0
+def hand_zone(color, x, z, rot_y):
+    """Hand zone at a seat. rot_y matches the seat's own facing (SEATS'
+    4th field) - the reference mod uses a HandTrigger rotY that varies by
+    row (0 south, 180 north) on this table, unlike the poker table's
+    constant 180."""
     zone = dict(BASE_FLAGS)
     zone.update({
         "GUID": guid(), "Name": "HandTrigger",
@@ -432,7 +395,7 @@ def build(missions, urls, out_dir, aspects=None):
     # zone is the single source of truth for where a seat is, and correcting
     # SEATS re-lays the whole table automatically.
     for colour, sx, sz, rot_y in SEATS:
-        objects.append(hand_zone(colour, sx, sz))
+        objects.append(hand_zone(colour, sx, sz, rot_y))
 
         mx, mz = seat_spot(sx, sz, OUT_MAT)
         objects.append(custom_tile(urls["mat"], (mx, 1.2, mz), rot_y,
@@ -496,22 +459,19 @@ def build(missions, urls, out_dir, aspects=None):
 
     objects.append(pili_bag(urls["pili"]))
     # The PDF viewer itself is confirmed working (opens, flips pages, locked
-    # in place as intended) - the only remaining problem was placement. Its
-    # first home (x=-32) clipped the rail in the curved end-cap; its second
-    # (z=-15) was still reported as tucked out of the way, and sat in the
-    # same deep z=-12.5/-15 band where POS_MTOGGLE separately clipped too.
-    # Moved onto the z=-9 row instead, next to Numbered Cards - the one band
-    # of the dealer's cut-out with several objects confirmed clearly visible
-    # and trouble-free across every screenshot so far.
-    objects.append(rulebook_pdf(urls["rulebook"], (-9.0, 1.3, -9.0), rot_y=0.0))
+    # in place as intended) on the old table - only its placement needs
+    # redoing here. Mirrors POS_MTOGGLE across x=0, on the same open flank,
+    # well clear of both the mat/dibber/tray clusters and the shared piles
+    # further out toward the short ends.
+    objects.append(rulebook_pdf(urls["rulebook"], (-12.0, 1.3, 0.0), rot_y=0.0))
 
     # snap points for played cards, ringed tightly around the middle
     snaps = []
     for i in range(len(SEATS)):
         th = math.radians(360.0 * i / len(SEATS))
         snaps.append({
-            "Position": {"x": PLAY_CENTRE[0] + 5.0 * math.sin(th), "y": 1.02,
-                         "z": PLAY_CENTRE[1] + 5.0 * math.cos(th)},
+            "Position": {"x": PLAY_CENTRE[0] + 6.0 * math.sin(th), "y": 1.02,
+                         "z": PLAY_CENTRE[1] + 6.0 * math.cos(th)},
             "Rotation": {"x": 0.0, "y": 180.0, "z": 0.0},
             "Tags": [],
         })
@@ -543,7 +503,8 @@ def build(missions, urls, out_dir, aspects=None):
         "Tags": ["Card Game", "Trick Taking", "Party"],
         "Gravity": 0.5,
         "PlayArea": 0.5,
-        "Table": "Table_Poker",
+        "Table": "Table_Custom",
+        "TableURL": urls["felt"],
         "Sky": "Sky_Museum",
         "Note": "Unofficial fan implementation of Pili Pili by ATM Gaming.",
         "TabStates": {
@@ -583,6 +544,23 @@ def build(missions, urls, out_dir, aspects=None):
     with open(path, "w", encoding="utf-8") as fh:
         json.dump(save, fh, indent=2)
     return path
+
+
+def felt_image():
+    """A plain placeholder surface for Table_Custom - a dark green field with
+    a slightly darker keyline, nothing more. TableURL is just a flat image
+    (TTS doesn't infer scale from it - the table's own real-world size is
+    fixed geometry, FELT_X/FELT_Z above, independent of this picture), so any
+    aspect ratio works; matching FELT_X:FELT_Z keeps it from looking
+    stretched. Real tribal/chilli felt art, matched to art.py's palette, is a
+    follow-up - this only needs to not be TTS's default table surface."""
+    from PIL import Image, ImageDraw
+    w, h = 1600, round(1600 * FELT_Z / FELT_X)
+    im = Image.new("RGB", (w, h), (26, 74, 40))
+    d = ImageDraw.Draw(im)
+    m = 18
+    d.rectangle([m, m, w - m, h - m], outline=(46, 110, 62), width=6)
+    return im
 
 
 def tts_saves_dir():
@@ -626,6 +604,16 @@ def main():
     # Static file, not generated by art.py - just sits in assets/ and gets
     # copied/hosted the same way as everything else below.
     files["rulebook"] = os.path.join(art.ASSETS, "ATM_GAMING_pilipili_RULES.pdf")
+
+    # Plain placeholder for the Custom Rectangle table's own surface image -
+    # cheap to make (a flat PNG, not run through art.generate()'s render
+    # pipeline) so --skip-art still gets one. A proper tribal/chilli felt
+    # texture, matching the rest of the art, is a follow-up; this just needs
+    # to not be TTS's default blank/grey surface.
+    felt_path = os.path.join(art.ASSETS, "felt.png")
+    if not (args.skip_art and os.path.exists(felt_path)):
+        felt_image().save(felt_path, "PNG", optimize=True)
+    files["felt"] = felt_path
 
     out_dir = args.out or tts_saves_dir()
     if out_dir is None:

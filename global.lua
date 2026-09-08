@@ -208,11 +208,13 @@ FONT_SELECTED = {0.12, 0.10, 0.06}
 BTN_FORBIDDEN = {0.22, 0.20, 0.19}
 FONT_FORBIDDEN = {0.50, 0.47, 0.45}
 
--- The seat/outward split below (see the two comments inline) is derived from
--- rotY=180, the facing shared by the four straight-edge seats. Red and Purple
--- use their own rotation (see SEATS in build_save.py) to face the felt
--- correctly, which was never checked against this same z-axis math - their
--- dibbers may not split seat-side/table-side as cleanly as the other four.
+-- The seat/outward split below (see the two comments inline) relies on every
+-- seat's dibber facing the table centre - true for both rotY values this
+-- table uses (0 for the south row, 180 for the north; see SEATS in
+-- build_save.py), since local +Z rotates to point at the centre either way.
+-- No per-seat exception needed here, unlike the old poker table's corner
+-- seats, which used an off-axis rotation this same z-axis math never
+-- actually got checked against.
 function buildDibberButtons()
     for _, d in ipairs(tagged(TAG_DIBBER, false)) do
         d.clearButtons()
