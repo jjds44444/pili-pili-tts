@@ -171,14 +171,18 @@ function toggleMissions()
     missionsOn = not missionsOn
     Wait.frames(function()
         local mt = one(TAG_MTOGGLE)
-        if mt ~= nil then mt.editButton({index = 1, label = missionsLabel()}) end
+        -- index 0, not 1: this tile creates exactly ONE button (no explicit
+        -- index, so TTS numbers it 0 by creation order). The dibber's
+        -- editButton uses index 1 correctly, because it creates three
+        -- buttons in order (-, centre, +) and 1 is genuinely the centre one -
+        -- that pattern got copied here without adjusting for there being
+        -- only one button, which is what actually crashed this.
+        if mt ~= nil then mt.editButton({index = 0, label = missionsLabel()}) end
     end, 1)
     if missionsOn then
-        broadcastToAll("Missions ON from the next round - the mission deck " ..
-            "sets a special rule and how many cards are dealt.", GOLD)
+        broadcastToAll("Missions: ON from next round.", GOLD)
     else
-        broadcastToAll("Missions OFF from the next round - a plain deal of 5 " ..
-            "cards each, straight to betting.", GOLD)
+        broadcastToAll("Missions: OFF from next round.", GOLD)
     end
 end
 
@@ -245,11 +249,8 @@ function adjustBid(obj, player_colour, delta)
         if bids[c] == nil then unset = unset + 1 else total = total + bids[c] end
     end
     if unset == 0 then
-        broadcastToAll("All bets are in - " .. total .. " tricks bet between " ..
-            "you, " .. dealt .. " cards to play. Everyone plays one card " ..
-            "to the middle each trick: highest number wins it and takes it, " ..
-            "and whoever won leads (plays first) next. The dealer plays first " ..
-            "card of all, since nobody has won a trick yet.", GOLD)
+        broadcastToAll("All bets in (" .. total .. " of " .. dealt .. "). " ..
+            "Play to the middle - highest wins the trick and leads next.", GOLD)
     end
 end
 
@@ -519,10 +520,8 @@ function dealCards(seated, missionName, n)
 
             local label = missionName and ("Mission: " .. missionName .. ".  ")
                 or ""
-            broadcastToAll(label .. n .. " cards each. Starting with the " ..
-                "dealer, everyone bets how many of their " .. n ..
-                " tricks they think they will win - use the -/+ on your " ..
-                "own dibber.", GOLD)
+            broadcastToAll(label .. n .. " cards each - bet on your dibber, " ..
+                "starting with the dealer.", GOLD)
             busy = false
         end, 1.0)
     end, 0.6)
@@ -585,6 +584,5 @@ function passDealer()
         marker.setPositionSmooth({dp.x, dp.y + 1.2, dp.z})
     end
     Turns.turn_color = nxt
-    broadcastToAll(nxt .. " is dealer this round: " .. nxt ..
-        " bets first, and plays the first card once betting is done.", COOL)
+    broadcastToAll(nxt .. " is dealer - bets first, plays first.", COOL)
 end
