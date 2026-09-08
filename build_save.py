@@ -65,11 +65,17 @@ DIR_CENTRE = (0.0, -500.0)
 # (9.6 x 5.6, from the reference mod - see hand_zone()) - anything dropped
 # there, including Pilis paid out by the script, could get swept into that
 # player's private hand instead of staying on the table. These values were
-# found by search: the largest OUT_MAT/OUT_CTRL/SIDE_CTRL under which every
-# tile clears every hand zone, the felt bounds, and every other tile.
-OUT_MAT = 12.0        # trick mat, in front of the seat
-OUT_CTRL = 5.0         # dibber and Pili tray, between the seat and the mat
-SIDE_CTRL = 3.5        # and apart from each other
+# found by search, over the REAL stadium-shaped felt (not a rectangle - see
+# felt_clamp below) and the tiles' real (now square, see custom_tile) sizes,
+# for the smallest OUT_MAT/OUT_CTRL under which every tile still clears every
+# hand zone, the true felt edge, and every other tile with a small margin.
+# The mat sits this far out because the hand zone it must clear is a genuinely
+# large, real 9.6 x 5.6 box - shrinking HAND_W/HAND_D below the reference
+# mod's real value would let it sit closer, at the cost of a smaller, less
+# reliable card-catching area.
+OUT_MAT = 10.5        # trick mat, in front of the seat
+OUT_CTRL = 6.5         # dibber and Pili tray, between the seat and the mat
+SIDE_CTRL = 2.5        # and apart from each other
 
 # Reported bug: the play deck kept drifting toward the table edge and falling
 # off. z=-15/-16.5 sat deep in the dealer's cut-out, which real poker tables
@@ -158,20 +164,38 @@ def seat_frame(x, z):
     return inward, tangent
 
 
-# Table_Poker's felt, estimated from real objects in "The Gang" workshop
-# mods (see layout_preview.py). Corner seats can walk a per-seat offset
-# outside this with a large enough SIDE_CTRL, so every computed spot is
-# clamped back onto it with a small margin - cheap insurance since these
-# bounds are themselves an estimate, not a value TTS exposes directly.
+# Table_Poker's felt, estimated from real objects in "The Gang" workshop mods
+# (see layout_preview.py). It is a STADIUM shape - straight sides, semicircular
+# ends - not a rectangle: Red and Purple sit in the curved end-caps (|x| well
+# past FELT_X - FELT_Z). Clamping to a rectangular bounding box, which an
+# earlier version of this file did, allows points in that box's CORNERS that
+# are outside the real oval table entirely - confirmed by their trick mats
+# visibly clipping off the felt in play. FELT_MARGIN is how far inside the
+# true edge every clamped point must stay.
 FELT_X, FELT_Z, FELT_MARGIN = 38.0, 19.0, 2.0
+
+
+def felt_clamp(x, z, margin=FELT_MARGIN):
+    """Pull (x, z) back onto the stadium-shaped felt, `margin` inside its edge."""
+    straight = FELT_X - FELT_Z          # |x| below this: bounded by a flat side
+    lim_z = FELT_Z - margin
+    if abs(x) <= straight:
+        return x, max(-lim_z, min(lim_z, z))
+    # in one of the rounded end-caps: clamp radially around its centre
+    cx = math.copysign(straight, x)
+    dx, dz = x - cx, z
+    r = math.hypot(dx, dz)
+    lim_r = FELT_Z - margin
+    if r <= lim_r or r == 0:
+        return x, z
+    return cx + dx / r * lim_r, dz / r * lim_r
 
 
 def seat_spot(x, z, out, side=0.0):
     inward, tangent = seat_frame(x, z)
     px = x + inward[0] * out + tangent[0] * side
     pz = z + inward[1] * out + tangent[1] * side
-    lim_x, lim_z = FELT_X - FELT_MARGIN, FELT_Z - FELT_MARGIN
-    return (max(-lim_x, min(lim_x, px)), max(-lim_z, min(lim_z, pz)))
+    return felt_clamp(px, pz)
 
 
 # Exact HandTrigger size from "The Gang [Scripted]" (3385562324) - real,
@@ -388,7 +412,7 @@ def build(missions, urls, out_dir, aspects=None):
         mx, mz = seat_spot(sx, sz, OUT_MAT)
         objects.append(custom_tile(urls["mat"], (mx, 1.2, mz), rot_y,
                                    f"{colour} tricks", f"PILI:MAT:{colour}",
-                                   scale=1.9, aspect=aspects.get("mat", 1.0)))
+                                   scale=1.4, aspect=aspects.get("mat", 1.0)))
         objects.append(scripting_zone((mx, 2.2, mz), rot_y,
                                       f"PILI:TRICKS:{colour}",
                                       size=(4.4, 4.0, 4.0)))
@@ -396,7 +420,7 @@ def build(missions, urls, out_dir, aspects=None):
         bx, bz = seat_spot(sx, sz, OUT_CTRL, SIDE_CTRL)
         objects.append(custom_tile(urls["dibber"], (bx, 1.2, bz), rot_y,
                                    f"{colour} bid", f"PILI:DIBBER:{colour}",
-                                   scale=1.3, aspect=aspects.get("dibber", 1.0)))
+                                   scale=1.1, aspect=aspects.get("dibber", 1.0)))
 
         px, pz = seat_spot(sx, sz, OUT_CTRL, -SIDE_CTRL)
         objects.append(custom_tile(urls["tray"], (px, 1.2, pz), rot_y,
@@ -407,15 +431,19 @@ def build(missions, urls, out_dir, aspects=None):
                                       size=(3.2, 4.0, 3.2)))
 
     objects.append(custom_tile(urls["button"], POS_BUTTON, 0.0,
-                               "Next Round", "PILI:BUTTON", scale=2.0,
+                               "Next Round", "PILI:BUTTON", scale=1.6,
                                aspect=aspects.get("button", 1.0)))
     objects.append(custom_tile(urls["mtoggle"], POS_MTOGGLE, 0.0,
-                               "Missions toggle", "PILI:MTOGGLE", scale=1.4,
+                               "Missions toggle", "PILI:MTOGGLE", scale=1.1,
                                aspect=aspects.get("mtoggle", 1.0)))
     # straight in front of the seat, in the gap the dibber and tray leave
-    # offset to the side of the dealer's own dibber, level with it, so it
-    # never competes with the mat sitting further out on the same line
-    dx, dz = seat_spot(SEATS[0][1], SEATS[0][2], OUT_CTRL, SIDE_CTRL * 2.3)
+    # Extrapolated past the first seat's dibber, away from its tray - the
+    # same formula passDealer() uses in global.lua to reposition the marker
+    # every round after this one, so the very first frame matches what every
+    # later round will look like rather than starting from a different spot.
+    d0x, d0z = seat_spot(SEATS[0][1], SEATS[0][2], OUT_CTRL, SIDE_CTRL)
+    t0x, t0z = seat_spot(SEATS[0][1], SEATS[0][2], OUT_CTRL, -SIDE_CTRL)
+    dx, dz = d0x + (d0x - t0x) * 0.6, d0z + (d0z - t0z) * 0.6
     objects.append(dealer_marker(urls["dealer"], (dx, 1.6, dz)))
 
     # play deck: 1-55 plus the Joker

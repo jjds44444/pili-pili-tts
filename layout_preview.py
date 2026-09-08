@@ -12,8 +12,24 @@ import sys
 
 from PIL import Image, ImageDraw, ImageFont
 
-# Table_Poker's felt, from the extent of the objects in "The Gang" mods
+# Table_Poker's felt, from the extent of the objects in "The Gang" mods.
+# It is a STADIUM shape - straight sides, semicircular ends - not a rectangle:
+# the corner seats sit in the curved end-caps, past FELT_X - FELT_Z. A naive
+# rectangular bounds check (what this file used to do) allows points in that
+# rectangle's corners that are actually off the real oval table - which is
+# exactly how a corner seat's mat clipped visibly off the felt in play while
+# this check kept reporting everything fine. Must match felt_clamp() in
+# build_save.py or this stops being a meaningful check on it.
 FELT_X, FELT_Z = 38.0, 19.0
+STRAIGHT = FELT_X - FELT_Z
+
+
+def on_felt(x, z):
+    if abs(x) <= STRAIGHT:
+        return abs(z) <= FELT_Z
+    import math
+    cx = math.copysign(STRAIGHT, x)
+    return math.hypot(x - cx, z) <= FELT_Z
 PX = 18                      # pixels per TTS unit
 MARGIN = 30
 
@@ -97,8 +113,8 @@ def main(save_path, out_path):
     problems = []
     for i in range(len(footprints)):
         ax0, az0, ax1, az1, an = footprints[i]
-        if (abs(ax0) > FELT_X or abs(ax1) > FELT_X
-                or abs(az0) > FELT_Z or abs(az1) > FELT_Z):
+        corners = [(ax0, az0), (ax1, az0), (ax0, az1), (ax1, az1)]
+        if not all(on_felt(cx, cz) for cx, cz in corners):
             problems.append(f"off the felt: {an}")
         for j in range(i + 1, len(footprints)):
             bx0, bz0, bx1, bz1, bn = footprints[j]

@@ -169,8 +169,10 @@ end
 
 function toggleMissions()
     missionsOn = not missionsOn
-    local mt = one(TAG_MTOGGLE)
-    if mt ~= nil then mt.editButton({index = 1, label = missionsLabel()}) end
+    Wait.frames(function()
+        local mt = one(TAG_MTOGGLE)
+        if mt ~= nil then mt.editButton({index = 1, label = missionsLabel()}) end
+    end, 1)
     if missionsOn then
         broadcastToAll("Missions ON from the next round - the mission deck " ..
             "sets a special rule and how many cards are dealt.", GOLD)
@@ -350,12 +352,19 @@ end
 -- take from a locked object needs to unlock it first, since Locked blocks
 -- player drag but scripted calls are unaffected either way - unlocking is
 -- just defensive.
+-- Objects merged via putObject()/takeObject() can leave you holding a stale
+-- reference to something Unity has already destroyed. TTS's own error for
+-- that ("cannot access field Locked of userdata<LuaObject>") crashed the
+-- entire calling chain (gather -> sweepAndDeal -> the whole round-advance),
+-- not just this one assignment. pcall contains it to exactly that object.
 function lockAtRest(obj)
-    if obj ~= nil then obj.Locked = true end
+    if obj == nil then return end
+    pcall(function() obj.Locked = true end)
 end
 
 function unlockForOps(obj)
-    if obj ~= nil then obj.Locked = false end
+    if obj == nil then return end
+    pcall(function() obj.Locked = false end)
 end
 
 function gather(tag, pos, thenShuffle, callback)
@@ -557,10 +566,23 @@ function passDealer()
     end
     if nxt == nil then return end
 
-    local z = one(TAG_DIBBER .. nxt)
-    if z ~= nil then
-        local q = z.getPosition()
-        marker.setPositionSmooth({q.x, q.y + 1.2, q.z})
+    -- Placing the marker directly on the dibber's own coordinates (the old
+    -- code here) put it on top of the dibber every single round after the
+    -- first - the build-time placement was fixed once, but this runtime path
+    -- runs every round and was never touched, so the bug never actually went
+    -- away. Extrapolate past the dibber, away from the tray, using the two
+    -- tiles' real positions - works for every seat, not just the one seat a
+    -- build-time constant could describe.
+    local dibber = one(TAG_DIBBER .. nxt)
+    local tray = one(TAG_TRAY .. nxt)
+    if dibber ~= nil and tray ~= nil then
+        local dp, tp = dibber.getPosition(), tray.getPosition()
+        marker.setPositionSmooth({
+            dp.x + (dp.x - tp.x) * 0.6, dp.y + 1.0, dp.z + (dp.z - tp.z) * 0.6,
+        })
+    elseif dibber ~= nil then
+        local dp = dibber.getPosition()
+        marker.setPositionSmooth({dp.x, dp.y + 1.2, dp.z})
     end
     Turns.turn_color = nxt
     broadcastToAll(nxt .. " is dealer this round: " .. nxt ..

@@ -501,13 +501,21 @@ def generate(missions, progress=True):
                                       os.path.join(ASSETS, "mission_faces.png"))
 
     say("in-world controls")
+    # Square canvases throughout, deliberately: TTS's Custom_Tile Rectangle
+    # type does not infer scaleX/scaleZ from the image, and a real check
+    # against 28 workshop mods found no correlation between a tile's scale
+    # ratio and its source image's aspect ratio either - so there is no
+    # evidence for what mapping (if any) TTS applies to a non-square canvas,
+    # and two different guesses at it both still came back visibly squashed
+    # in play. Square avoids the question entirely, which is what ~95% of
+    # real Custom_Tiles do (635 of 666 checked).
     p = os.path.join(ASSETS, "dibber.png")
-    plaque(600, 300, "BID", title_frac=0.34).save(p, "PNG", optimize=True)
+    plaque(600, 600, "BID", title_frac=0.20).save(p, "PNG", optimize=True)
     out["dibber"] = p
 
     p = os.path.join(ASSETS, "round_button.png")
-    plaque(700, 300, "NEXT ROUND", ground=(28, 14, 12), accent=CHILI_RED,
-           chilli=True, title_frac=0.26).save(p, "PNG", optimize=True)
+    plaque(700, 700, "NEXT ROUND", ground=(28, 14, 12), accent=CHILI_RED,
+           chilli=True, title_frac=0.15).save(p, "PNG", optimize=True)
     out["button"] = p
 
     p = os.path.join(ASSETS, "dealer.png")
@@ -515,14 +523,14 @@ def generate(missions, progress=True):
     out["dealer"] = p
 
     p = os.path.join(ASSETS, "mission_toggle.png")
-    plaque(500, 260, "MISSIONS", ground=(26, 24, 20), accent=(232, 196, 92),
-           title_frac=0.24).save(p, "PNG", optimize=True)
+    plaque(500, 500, "MISSIONS", ground=(26, 24, 20), accent=(232, 196, 92),
+           title_frac=0.16).save(p, "PNG", optimize=True)
     out["mtoggle"] = p
 
     # mats are backdrops, so they stay quiet: dark, thin border, small type
     p = os.path.join(ASSETS, "mat_tricks.png")
-    plaque(700, 500, "TRICKS WON", ground=(24, 23, 22), accent=(74, 70, 66),
-           title_frac=0.11).save(p, "PNG", optimize=True)
+    plaque(700, 700, "TRICKS WON", ground=(24, 23, 22), accent=(74, 70, 66),
+           title_frac=0.075).save(p, "PNG", optimize=True)
     out["mat"] = p
 
     p = os.path.join(ASSETS, "mat_pilis.png")
