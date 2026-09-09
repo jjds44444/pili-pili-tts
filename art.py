@@ -656,7 +656,9 @@ def generate(missions, progress=True):
     # Same plaque language as Next Round, deliberately duller (a colder
     # accent) - the two sit right next to each other as one shared control,
     # and shouldn't compete for the eye the way two equally hot reds would.
-    nameplate(700, "NEW GAME", (18, 20, 24), (120, 150, 200)).save(
+    # "RESET", not "NEW GAME" - the latter reads as something to press at
+    # the start of a game, not mid-game once everyone's agreed to call it.
+    nameplate(700, "RESET", (18, 20, 24), (120, 150, 200)).save(
         p, "PNG", optimize=True)
     out["newgame"] = p
 

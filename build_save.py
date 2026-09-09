@@ -492,7 +492,7 @@ def build(missions, urls, out_dir, aspects=None):
                                "Next Round", "PILI:BUTTON", scale=CTRL_SCALE,
                                aspect=aspects.get("button", 1.0)))
     objects.append(custom_tile(urls["newgame"], POS_NEWGAME, ctrl_rot,
-                               "New Game", "PILI:NEWGAME", scale=CTRL_SCALE,
+                               "Reset", "PILI:NEWGAME", scale=CTRL_SCALE,
                                aspect=aspects.get("newgame", 1.0)))
     objects.append(custom_tile(urls["mtoggle"], POS_MTOGGLE,
                                face_centre(POS_MTOGGLE[0], POS_MTOGGLE[2]),
@@ -535,7 +535,7 @@ def build(missions, urls, out_dir, aspects=None):
     objects.append(token_bag(
         urls["pili"], POS_PILIS, "PILI:BAG", "Pilis",
         "Drag out a Pili when you owe one. Hand-tracked - agree between "
-        "yourselves when someone's had enough, then hit New Game.",
+        "yourselves when someone's had enough, then hit Reset.",
         "PILI:TOKEN", "Pili", "One trick off your bet = one Pili."))
     objects.append(token_bag(
         urls["trick"], POS_TRICKBAG, "PILI:TRICKBAG", "Trick tokens",
