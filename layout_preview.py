@@ -39,6 +39,30 @@ STYLE = {
 }
 
 
+ASSETS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
+_aspect_cache = {}
+
+
+def image_aspect(obj):
+    """height/width of a tile's own art, from the real PNG in assets/.
+
+    Falls back to 1.0 (square) if the file isn't there - a save built with
+    --out elsewhere still checks, just with a square assumption for anything
+    whose art can't be found locally.
+    """
+    url = obj.get("CustomImage", {}).get("ImageURL", "")
+    name = os.path.basename(url.split("?")[0])
+    if name not in _aspect_cache:
+        path = os.path.join(ASSETS, name)
+        try:
+            from PIL import Image as _I
+            with _I.open(path) as im:
+                _aspect_cache[name] = im.height / im.width
+        except Exception:
+            _aspect_cache[name] = 1.0
+    return _aspect_cache[name]
+
+
 def corners(x, z, ex, ez, rot_y):
     """The 4 world-space corners of a footprint centred at (x, z), half-size
     (ex, ez), rotated rot_y degrees about Y. Seats here sit at arbitrary
@@ -116,7 +140,14 @@ def main(save_path, out_path):
         elif kind == "zone":
             ex, ez = sx * 0.5, sz * 0.5
         elif kind == "tile":
+            # A Custom_Tile's real footprint is scale x the source image's own
+            # aspect ratio - TTS takes the shape from the image, not from
+            # scaleZ (see custom_tile() in build_save.py). A tile with a wide
+            # image is a wide tile even though scaleX == scaleZ, so the depth
+            # has to come from the actual PNG or this check silently models
+            # the wrong shape.
             ex, ez = sx * 1.15, sz * 1.15      # tile art is roughly 2.3 units
+            ez *= image_aspect(o)
         elif kind == "deck":
             ex, ez = 1.2, 1.7
         else:

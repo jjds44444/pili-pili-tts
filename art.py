@@ -366,34 +366,6 @@ def plaque(cw, ch, title, ground=(20, 18, 18), accent=(232, 196, 92),
     return tile.resize((cw, ch), Image.LANCZOS).convert("RGB")
 
 
-def nameplate(size, title, ground, accent, bar_frac=0.30):
-    """A thin rectangular label, baked onto a square canvas rather than a
-    genuinely non-square one.
-
-    Custom_Tile's scaleX/scaleZ don't reliably reproduce a non-square source
-    image's real aspect ratio in actual play - confirmed a third time here
-    (round_button.png/new_game_button.png built at 900x280, came out visibly
-    squished in a real TTS load) after two earlier, separate attempts at
-    exactly this already failed the same way (see the "square canvases
-    throughout, deliberately" note above) - real workshop-mod data backs
-    this up too: no correlation between a Custom_Tile's own scale ratio and
-    its source image's aspect ratio across 28 real mods checked, and ~95% of
-    real Custom_Tiles are square regardless of what's drawn on them. There
-    is no known reliable formula for this object type; square is the only
-    approach that has actually held up in real play, here or in any
-    reference mod found. So: draw the thin rectangle look at `bar_frac` of
-    the square canvas's height, filled with the surrounding `ground` colour
-    (no visible seam at the bar's edge) rather than trying to make the tile
-    itself non-square again.
-    """
-    bar_h = int(size * bar_frac)
-    bar = plaque(size, bar_h, title, ground=ground, accent=accent,
-                title_frac=0.5, minimal=True)
-    canvas = Image.new("RGB", (size, size), ground)
-    canvas.paste(bar, (0, (size - bar_h) // 2))
-    return canvas
-
-
 def dealer_token():
     s = 512
     img = Image.new("RGBA", (s, s), (0, 0, 0, 0))
@@ -625,14 +597,14 @@ def generate(missions, progress=True):
     out["felt"] = p
 
     say("in-world controls")
-    # Square canvases throughout, deliberately: TTS's Custom_Tile Rectangle
-    # type does not infer scaleX/scaleZ from the image, and a real check
-    # against 28 workshop mods found no correlation between a tile's scale
-    # ratio and its source image's aspect ratio either - so there is no
-    # evidence for what mapping (if any) TTS applies to a non-square canvas,
-    # and two different guesses at it both still came back visibly squashed
-    # in play. Square avoids the question entirely, which is what ~95% of
-    # real Custom_Tiles do (635 of 666 checked).
+    # Square canvas here because a dibber IS square, not because non-square
+    # canvases are a problem. They aren't: TTS takes a Custom_Tile's shape
+    # from the image's own aspect ratio (see custom_tile() in build_save.py
+    # and the note in CLAUDE.md). The "no correlation between a tile's scale
+    # ratio and its image aspect ratio across real mods" finding that used to
+    # be cited here as evidence AGAINST non-square canvases is in fact
+    # evidence FOR this: real modders don't encode the aspect in the scale
+    # because they don't have to. Draw whatever shape the tile should be.
     # No baked title: the runtime number row and big-pick display already say
     # what this tile is for, and a static "BID" fighting them for the same
     # central space read as garbled, half-covered text in play.
@@ -641,15 +613,15 @@ def generate(missions, progress=True):
     out["dibber"] = p
 
     # Requested plain: no chilli icon, no background texture, thin border -
-    # "just the text", since these two sit close together as one small
-    # shared control rather than a card-like plaque in its own right. Square
-    # canvas (nameplate() bakes the thin rectangle *look* onto it) - a
-    # genuinely non-square canvas was tried here first and came out visibly
-    # squished in real play, the third time this project has hit that
-    # specific failure; see nameplate()'s own docstring.
+    # "just the text" - and genuinely rectangular, 900x280. A non-square tile
+    # canvas is fine: TTS shapes a Custom_Tile from the image's own aspect
+    # ratio (see custom_tile() in build_save.py). The squishing this project
+    # kept blaming on non-square canvases was build_save.py applying that
+    # aspect a second time itself; with that fixed, a rectangular image just
+    # renders as a rectangular tile.
     p = os.path.join(ASSETS, "round_button.png")
-    nameplate(700, "NEXT ROUND", (28, 14, 12), CHILI_RED).save(
-        p, "PNG", optimize=True)
+    plaque(900, 280, "NEXT ROUND", ground=(28, 14, 12), accent=CHILI_RED,
+           title_frac=0.5, minimal=True).save(p, "PNG", optimize=True)
     out["button"] = p
 
     p = os.path.join(ASSETS, "new_game_button.png")
@@ -658,8 +630,8 @@ def generate(missions, progress=True):
     # and shouldn't compete for the eye the way two equally hot reds would.
     # "RESET", not "NEW GAME" - the latter reads as something to press at
     # the start of a game, not mid-game once everyone's agreed to call it.
-    nameplate(700, "RESET", (18, 20, 24), (120, 150, 200)).save(
-        p, "PNG", optimize=True)
+    plaque(900, 280, "RESET", ground=(18, 20, 24), accent=(120, 150, 200),
+           title_frac=0.5, minimal=True).save(p, "PNG", optimize=True)
     out["newgame"] = p
 
     p = os.path.join(ASSETS, "dealer.png")

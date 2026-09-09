@@ -109,19 +109,23 @@ DUMP_HALF = 2.5     # dump zone half-size (must match the scripting_zone size be
 # dead short ends). Kept close to the centre and to each other on request
 # rather than spread out to fill the available radius - "just try it and
 # see" on the exact numbers; layout_preview.py is the actual check.
+# Two mirrored rows across the centre, requested explicitly: cards on one
+# side, tokens and controls on the other. BOTH decks sit opposite BOTH bags
+# (an earlier pass only mirrored the play deck and left the mission deck off
+# to one side, which is what "the decks should be opposite the bags" was
+# about). Discard sits beside its own deck, aside beside the mission deck.
 POS_REVEAL = (0.0, 1.6, 0.0)
-POS_PLAY = (-3.2, 1.6, 3.5)
-POS_DISCARD = (3.2, 1.6, 3.5)      # face up - see gather()'s rotation in global.lua
-POS_MISSION = (-6.5, 1.6, -2.0)
-POS_ASIDE = (-6.5, 1.6, 2.0)
-# Bags directly opposite the decks (mirrored across the centre - same x,
-# negated z), Next Round/New Game between the centre and the bags on that
-# same line - "in front of" them, requested explicitly.
+POS_PLAY = (-3.2, 1.6, 6.5)        # mirrors POS_PILIS
+POS_MISSION = (3.2, 1.6, 6.5)      # mirrors POS_TRICKBAG
+POS_DISCARD = (-8.0, 1.6, 3.0)     # face up - see gather()'s rotation in global.lua
+POS_ASIDE = (8.0, 1.6, 3.0)
 POS_PILIS = (-3.2, 1.6, -6.5)      # Pili token supply bag
 POS_TRICKBAG = (3.2, 1.6, -6.5)    # trick token supply bag
+# Next Round/Reset between the centre and the bags on that same line - "in
+# front of" them, also requested explicitly.
 POS_BUTTON = (-1.8, 1.3, -3.2)
 POS_NEWGAME = (1.8, 1.3, -3.2)
-POS_MTOGGLE = (-9.0, 1.3, -4.5)
+POS_MTOGGLE = (7.0, 1.3, 5.2)      # by the mission deck, since that is what it toggles
 
 _used_guids = set()
 
@@ -240,24 +244,31 @@ def hand_zone(color, x, z, rot_y):
     return zone
 
 
-def custom_tile(image_url, pos, rot_y, nickname, gm_notes, scale, locked=True,
-                aspect=1.0):
-    """A CustomTile Type 3 (Rectangle). TTS renders scaleX/scaleZ as literal,
-    independent width/depth - it does NOT infer them from the image. Passing
-    the same value for both, as an earlier version of this file did, squashes
-    every non-square plaque (the dibber, the button, the trick mat were all
-    wide rectangles) onto a square footprint: text and buttons sized for the
-    real canvas end up compressed into a squarer shape than they were drawn
-    for, which is what made them look oversized and cramped. `aspect` is
-    height/width of the source image; scaleZ is derived from it so the tile's
-    footprint actually matches what was drawn.
+def custom_tile(image_url, pos, rot_y, nickname, gm_notes, scale, locked=True):
+    """A CustomTile Type 3 (Rectangle).
+
+    **scaleX and scaleZ must be equal.** TTS works out the tile's rendered
+    shape from the source image's own aspect ratio; scaleX/scaleZ are a
+    uniform size multiplier on top of that, NOT independent width/depth.
+    Verified against real workshop tiles that ship non-square art - e.g. a
+    Type 3 tile with a 1520x478 image (3.18:1) at scaleX = scaleZ = 1.5, and
+    Type 0 tiles at 1600x700 and 3355x2040, all with equal scales. Across
+    451 real tiles checked, every single one has scaleX == scaleZ.
+
+    An earlier version of this file believed the opposite ("TTS renders
+    scaleX/scaleZ literally and does not infer them from the image") and set
+    scaleZ = scale * image aspect - which applies the aspect a SECOND time on
+    top of the one TTS already applies, squashing the tile flat. That is what
+    the reported squishing actually was, and chasing it as an image problem
+    (or a caching problem) wasted a lot of time. Want a rectangular tile?
+    Draw a rectangular image and leave the scale uniform.
     """
     return dict(BASE_FLAGS, **{
         "GUID": guid(), "Name": "Custom_Tile",
         "Transform": {
             "posX": pos[0], "posY": pos[1], "posZ": pos[2],
             "rotX": 0.0, "rotY": rot_y, "rotZ": 0.0,
-            "scaleX": scale, "scaleY": 1.0, "scaleZ": scale * aspect,
+            "scaleX": scale, "scaleY": 1.0, "scaleZ": scale,
         },
         "Nickname": nickname, "Description": "", "GMNotes": gm_notes,
         "Locked": locked, "Hands": False, "Grid": False, "Snap": False,
@@ -429,8 +440,7 @@ which direction the arrows point, which numbers are cursed. Those splits are a
 reconstruction. Edit missions.json and rerun build_save.py to correct them."""
 
 
-def build(missions, urls, out_dir, aspects=None):
-    aspects = aspects or {}
+def build(missions, urls, out_dir):
     objects = []
 
     # Seats. Everything except the hand zone is parked here and then moved into
@@ -454,7 +464,7 @@ def build(missions, urls, out_dir, aspects=None):
         bx, bz = seat_spot(sx, sz, rot_y, OUT_CTRL)
         objects.append(custom_tile(urls["dibber"], (bx, 1.2, bz), rot_y,
                                    f"{colour} bid", f"PILI:DIBBER:{colour}",
-                                   scale=1.1, aspect=aspects.get("dibber", 1.0)))
+                                   scale=1.1))
 
         # Reported bug: the tile and its zone used to share one GMNotes tag
         # ("there's only one functional zone, a second tag has no purpose" -
@@ -469,7 +479,7 @@ def build(missions, urls, out_dir, aspects=None):
         dx, dz = seat_spot(sx, sz, rot_y, OUT_CTRL, SIDE_DUMP)
         objects.append(custom_tile(urls["dump"], (dx, 1.2, dz), rot_y,
                                    f"{colour} dump", f"PILI:DUMPTILE:{colour}",
-                                   scale=2.0, aspect=aspects.get("dump", 1.0)))
+                                   scale=2.0))
         objects.append(scripting_zone((dx, 2.2, dz), rot_y,
                                       f"PILI:DUMP:{colour}",
                                       size=(DUMP_HALF * 2, 4.0, DUMP_HALF * 2)))
@@ -489,15 +499,12 @@ def build(missions, urls, out_dir, aspects=None):
                            (POS_BUTTON[2] + POS_NEWGAME[2]) / 2)
     CTRL_SCALE = 1.6 * 0.8    # requested smaller - 80% of the original
     objects.append(custom_tile(urls["button"], POS_BUTTON, ctrl_rot,
-                               "Next Round", "PILI:BUTTON", scale=CTRL_SCALE,
-                               aspect=aspects.get("button", 1.0)))
+                               "Next Round", "PILI:BUTTON", scale=CTRL_SCALE))
     objects.append(custom_tile(urls["newgame"], POS_NEWGAME, ctrl_rot,
-                               "Reset", "PILI:NEWGAME", scale=CTRL_SCALE,
-                               aspect=aspects.get("newgame", 1.0)))
+                               "Reset", "PILI:NEWGAME", scale=CTRL_SCALE))
     objects.append(custom_tile(urls["mtoggle"], POS_MTOGGLE,
                                face_centre(POS_MTOGGLE[0], POS_MTOGGLE[2]),
-                               "Missions toggle", "PILI:MTOGGLE", scale=1.1,
-                               aspect=aspects.get("mtoggle", 1.0)))
+                               "Missions toggle", "PILI:MTOGGLE", scale=1.1))
     # straight in front of the seat, toward the dump zone
     # Extrapolated past the first seat's dibber, away from its dump zone -
     # the same formula passDealer() uses in global.lua to reposition the
@@ -719,13 +726,7 @@ def main():
         else:
             urls[key] = "file:///" + dst.replace("\\", "/")
 
-    from PIL import Image as _Image
-    aspects = {}
-    for key in ("dibber", "dump", "button", "newgame", "mtoggle"):
-        with _Image.open(files[key]) as im:
-            aspects[key] = im.height / im.width
-
-    path = build(missions, urls, out_dir, aspects)
+    path = build(missions, urls, out_dir)
     print("save file:", path)
     if args.base_url:
         print("images:    served from", args.base_url)

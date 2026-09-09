@@ -158,31 +158,25 @@ than an axis-aligned check would predict - this is exactly the kind of thing
 the rotated-footprint search above exists to catch, and is a good worked
 example of why the axis-aligned approximation isn't safe here).
 
-**Every real `Custom_Tile` on this table is square, on purpose, and stays
-that way.** `custom_tile()` *can* derive `scaleZ` from a source image's real
-aspect ratio (read from the actual PNG, via `aspects` computed in `main()`)
-rather than one `scale` for both axes - the mechanism exists and is
-documented as the fix for an early bug where a non-square plaque got
-squashed onto a square footprint. **Don't trust it for a genuinely
-non-square canvas.** It has now failed in real, verified TTS play three
-separate times (the two `art.py`'s own "square canvases throughout" comment
-already documents, plus a third here: Next Round/New Game built at 900x280,
-scaleZ derived correctly to match, still came out visibly squished in play).
-A check across 28 real workshop mods found no correlation at all between a
-`Custom_Tile`'s own scale ratio and its source image's aspect ratio, and
-~95% of real `Custom_Tile`s are square regardless of what's drawn on them -
-that's not a coincidence, it's every other mod author hitting the same wall
-and giving up on it too. **There is no known reliable way to get a
-genuinely non-square `Custom_Tile` footprint in this engine.** For a tile
-that needs to *look* rectangular, `nameplate()` in `art.py` bakes that look
-onto a square canvas instead (a thin bar centred in a same-coloured square,
-so the tile's real silhouette stays square but nothing draws attention to
-the rest of it) - the tile's true footprint is still the full square, this
-only changes what's visibly drawn on it. If a real non-square footprint is
-ever needed, look at `CardCustom` instead (this project's own numbered/
-mission cards already render a genuine 400x560 non-square rectangle
-correctly - cards are a different object type from `Custom_Tile` in TTS and
-don't share this problem) rather than trying `Custom_Tile` a fourth time.
+**A `Custom_Tile`'s shape comes from its IMAGE, not from `scaleZ`.** TTS
+works out the rendered shape from the source image's own aspect ratio;
+`scaleX`/`scaleZ` are a uniform size multiplier on top of that. Verified
+against real workshop tiles that ship non-square art - a Type 3 tile with a
+1520x478 image (3.18:1) at `scaleX = scaleZ = 1.5`, Type 0 tiles at 1600x700
+and 3355x2040, all with equal scales - and across 451 real `Custom_Tile`s
+checked, every single one has `scaleX == scaleZ`. **So: want a rectangular
+tile? Draw a rectangular image and leave the scale uniform.**
+
+This file previously asserted the exact opposite ("TTS renders `scaleX`/
+`scaleZ` as literal, independent width/depth and does NOT infer them from
+the image"), and `custom_tile()` set `scaleZ = scale * aspect` accordingly -
+applying the aspect a second time on top of the one TTS already applies, so
+any non-square tile came out squashed flat. That wrong note is what made
+"square canvases throughout, deliberately" look like a law of nature rather
+than a workaround for a local bug, and it burned a lot of time: the squish
+got blamed on non-square canvases, then on GitHub's CDN, then on TTS's
+caching, then on stale save files - none of which were it. **When a
+rendering result contradicts a note in this file, suspect the note.**
 
 **Check any layout change** with `python layout_preview.py <path/to/PiliPili.json>`
 before loading it in TTS - it draws every object at its real, *rotated*
