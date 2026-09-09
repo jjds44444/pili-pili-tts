@@ -29,73 +29,91 @@ DEFAULT_BASE_URL = "https://raw.githubusercontent.com/jjds44444/pili-pili-tts/ma
 import art  # noqa: E402  (lives next to this script)
 
 
-# Seats on Table_Custom (Custom Rectangle), in world units, lifted verbatim
-# from "The Settlers of Catan" workshop mod (1010436537647666695) - a real
-# 6-player game on this exact table, using this exact 3-per-long-side
-# arrangement. Replaces Table_Poker: that table's stadium shape (straight
-# sides, curved end-caps) drove most of the corner-facing, felt-boundary and
-# crowding problems below - see git history for the old SEATS/felt_clamp/
-# DIR_CENTRE machinery this replaced. This table is a plain rectangle with
-# seats on the two long sides only (the short ends are free, same role the
-# poker table's dealer cut-out used to play) - no corners, no curved caps, no
-# per-seat rotation guesswork.
-# 4th field: rotY, shared by DISPLAY tiles (dibber/mat/tray/dealer) *and* the
-# HandTrigger - unlike the poker table, the reference mod uses a HandTrigger
-# rotY matching each row's own facing (0 for the south row, 180 for the
-# north), not one constant, so there is no split to track here.
-SEATS = [
-    ("Red",    -23.67, -34.43,   0.0),
-    ("Orange",   0.00, -34.43,   0.0),
-    ("White",   23.67, -34.26,   0.0),
-    ("Green",   23.67,  34.45, 180.0),
-    ("Blue",     0.00,  34.45, 180.0),
-    ("Purple", -23.67,  34.43, 180.0),
-]
+# Seats on Table_Circular, in world units. Radius and HandTrigger size are
+# real, averaged from the 8 HandTriggers of "Auto replace Imgur links with
+# mirror site" (a real, working Table_Circular mod) - not a guess. That mod
+# seats 8; these 6 are evenly redistributed round the SAME real radius rather
+# than borrowed wholesale from a 6-seat mod, because none turned up in a
+# search of installed Workshop mods. That's a smaller leap than guessing the
+# table's geometry outright: the seat-facing formula below reproduces all 8
+# of that mod's real positions exactly (see git history for the check this
+# was verified against), so it's the placement formula that's proven, not
+# just one seat count's worth of coordinates.
+#
+# Replaces Table_Custom (the rectangle): two dead short ends and a wide-open
+# middle read as "big and soulless" in practice. A true circle has no
+# straight-vs-curved split to get wrong either (unlike the old poker table)
+# - every seat's own radius vector already is the correct "inward" direction,
+# no distant reference point or per-corner exception required.
+#
+# CAVEAT, carried over from the rectangle's own FELT_X/FELT_Z note but
+# weaker here: the rectangle's 44 x 26 had an independent community
+# measurement (7'4" x 4'4") to cross-check against. There is no equivalent
+# independent measurement for Table_Circular - FELT_R below is inferred
+# from where real hand zones sit, not measured separately. Treat it as
+# provisional until an in-game ruler check confirms or corrects it.
+#
+# 4th field: rotY (phi), shared by the DISPLAY tiles and the HandTrigger,
+# same convention as the rectangle - it's the seat's own facing angle, and
+# doubles as the angle used to compute x/z below (see seat_spot()).
+FELT_R, FELT_MARGIN = 21.51, 2.0
+
+
+def _seat_xz(phi_deg):
+    phi = math.radians(phi_deg)
+    return -FELT_R * math.sin(phi), -FELT_R * math.cos(phi)
+
+
+SEATS = [(colour, *_seat_xz(phi), phi) for colour, phi in [
+    ("Red", 0.0), ("Orange", 60.0), ("White", 120.0),
+    ("Green", 180.0), ("Blue", 240.0), ("Purple", 300.0),
+]]
 
 # The real centre of the play area, where the snap-point ring for played
-# cards sits. With seats on only the two long sides, "inward" is just
-# straight toward z=0 for every seat - no distant reference point needed to
-# keep seats' lanes from converging (the poker table's DIR_CENTRE hack, now
-# gone - see seat_spot()).
+# cards sits - dead centre on a true circle, no other candidate point makes
+# sense here.
 PLAY_CENTRE = (0.0, 0.0)
 
-# Exact HandTrigger size from "The Settlers of Catan" - real, not a guess.
-# Every per-seat display tile (dibber/mat/tray) has to clear this footprint.
-HAND_W, HAND_D = 15.3, 6.4
+# Real HandTrigger size, same reference mod as FELT_R above.
+HAND_W, HAND_D = 11.7, 6.8
 
-# OUT_MAT/OUT_CTRL/SIDE_CTRL found by the same kind of search the poker table
-# used (see git history for that script) - over this table's real rectangular
-# felt (see FELT_X/FELT_Z below) and the tiles' real square footprints (see
-# custom_tile), for the smallest OUT_MAT/OUT_CTRL under which every tile
-# clears every hand zone, the felt edge, and every other tile with a 0.5-unit
-# margin. On this table the felt edge is the binding constraint, not the hand
-# zone: HAND_D means each hand zone's near edge already sits well past the
-# felt boundary (players' hands hover past the rail, into their lap), so
-# clearing the felt automatically clears the hand zone too.
-OUT_MAT = 16.3         # trick mat, in front of the seat, toward the centre
-OUT_CTRL = 12.1        # dibber and Pili tray, between the seat and the mat
-SIDE_CTRL = 1.7        # and apart from each other
+# No more trick mat or Pili tray (see the dump-zone note in build()) - just
+# the dibber (bid) and one open dump zone per seat, so there is one fewer
+# footprint to clear than the rectangle ever needed, and both sit closer to
+# the seat's own edge of the felt than the rectangle's equivalents did.
+#
+# Found with an actual rotated-footprint search (real_search.py, not kept in
+# the repo - a one-off script reusing layout_preview.py's corners()/
+# polys_overlap() against these seats' real angles), not the simpler
+# axis-aligned approximation the rectangle table could get away with. That
+# approximation was tried first here and gave numbers (OUT_CTRL ~10) that
+# looked fine under it but produced real overlaps once actually built and
+# checked with a proper rotated-rectangle test - seats packed 60 degrees
+# apart, at this radius, are close enough that an unrotated approximation of
+# a rotated footprint is genuinely wrong, not just imprecise. Re-run that
+# kind of search (not the axis-aligned kind) over layout_preview.py's own
+# corners()/polys_overlap() if any of SEATS, HAND_W/HAND_D, or these scales
+# change.
+OUT_CTRL = 6.8      # dibber, and the dump zone's own "forward" distance
+SIDE_DUMP = 4.6     # dump zone, sideways from the dibber
+DUMP_HALF = 3.3     # dump zone half-size (must match the scripting_zone size below)
 
-# Shared piles and controls. With seats on only the north/south edges, the
-# east/west flanks (|x| beyond the seats' own 23.67, out to the felt edge)
-# are as free of hand zones and mats as the poker table's dealer cut-out
-# used to be - without that cut-out being the only unrailed, exposed edge on
-# the table (every edge here is a plain straight rail), so there is no
-# repeat of the play-deck-drifting-off bug to guard against by placement
-# alone. lockAtRest() in global.lua is kept regardless, as a second line of
-# defence against any pile getting nudged.
-POS_PLAY = (-30.0, 1.6, -8.0)
-POS_ASIDE = (-30.0, 1.6, 8.0)
-POS_MISSION = (30.0, 1.6, -8.0)
-POS_DISCARD = (30.0, 1.6, 8.0)
+# Shared piles and controls, in the open middle a circular table gives for
+# free (unlike the rectangle, which had to earn this space back from two
+# dead short ends). Kept close to the centre and to each other on request
+# rather than spread out to fill the available radius - "just try it and
+# see" on the exact numbers; layout_preview.py is the actual check.
 POS_REVEAL = (0.0, 1.6, 0.0)
-POS_BUTTON = (0.0, 1.3, 10.0)
-POS_PILIS = (0.0, 1.6, -10.0)
-# Missions toggle and rulebook sit together, further out on the same west
-# flank than PLAY/ASIDE - off to one side of the table, out of the open
-# middle, rather than parked on the centreline where they read as sat in the
-# way of the play area.
-POS_MTOGGLE = (-38.0, 1.3, 6.0)
+POS_PLAY = (-3.2, 1.6, 3.5)
+POS_DISCARD = (3.2, 1.6, 3.5)      # face up - see gather()'s rotation in global.lua
+POS_MISSION = (-6.5, 1.6, -2.0)
+POS_ASIDE = (-6.5, 1.6, 2.0)
+POS_PILIS = (6.5, 1.6, -2.0)       # Pili token supply bag
+POS_TRICKBAG = (6.5, 1.6, 2.0)     # trick token supply bag
+# Next Round and New Game share one small control cluster, off-centre.
+POS_BUTTON = (-2.2, 1.3, -4.0)
+POS_NEWGAME = (2.2, 1.3, -4.0)
+POS_MTOGGLE = (-9.0, 1.3, -4.5)
 
 _used_guids = set()
 
@@ -158,28 +176,38 @@ def deck(deck_id, cards, nickname, gm_notes, cd, pos, rot=(0, 180, 180)):
     })
 
 
-# The table is a plain rectangle with seats on the north/south long sides
-# only, so every seat's "inward" direction is simply straight toward z=0 -
-# unlike the old poker table (seats fanned round a curved edge), there is no
-# convergence problem to work around with a distant reference point.
-def seat_spot(x, z, out, side=0.0):
-    inward = -1.0 if z > 0 else 1.0
-    return felt_clamp(x + side, z + inward * out)
-
-
-# Table_Custom's felt is a plain rectangle - measured at 7'4" x 4'4"
-# (community measurement, see PR description / git history), which in TTS's
-# inches-as-units convention is FELT_X x FELT_Z below. No stadium shape, no
-# curved end-caps, no per-corner guesswork: unlike the old Table_Poker
-# constants this replaced, a straight |x| <= / |z| <= check is exact here,
-# not an approximation layout_preview.py has to wave through with false
-# confidence.
-FELT_X, FELT_Z, FELT_MARGIN = 44.0, 26.0, 2.0
+# Every seat's own radius vector already is the correct "inward" direction on
+# a true circle - unlike either previous table, there's no per-seat exception
+# and no distant reference point needed to stop directions converging.
+# `phi_deg` is the seat's own rotY (SEATS' 4th field): inward = (sin phi,
+# cos phi), tangent = (cos phi, -sin phi), which is what reproduces the
+# reference mod's real 8 seat positions exactly (see the SEATS comment).
+def seat_spot(x, z, phi_deg, out, side=0.0):
+    phi = math.radians(phi_deg)
+    inward = (math.sin(phi), math.cos(phi))
+    tangent = (math.cos(phi), -math.sin(phi))
+    px = x + inward[0] * out + tangent[0] * side
+    pz = z + inward[1] * out + tangent[1] * side
+    return felt_clamp(px, pz)
 
 
 def felt_clamp(x, z, margin=FELT_MARGIN):
-    lim_x, lim_z = FELT_X - margin, FELT_Z - margin
-    return max(-lim_x, min(lim_x, x)), max(-lim_z, min(lim_z, z))
+    """Pull (x, z) back inside the circular felt, `margin` inside its edge."""
+    r = math.hypot(x, z)
+    lim = FELT_R - margin
+    if r <= lim or r == 0:
+        return x, z
+    return x / r * lim, z / r * lim
+
+
+def face_centre(x, z):
+    """rotY that points a plaque's baked "up" from (x, z) toward the table
+    centre - the general form of SEATS' own rotation (reproduces every
+    SEATS rotY exactly, given that seat's own x/z), for objects that aren't
+    tied to a seat and so have no rotY of their own to inherit."""
+    if x == 0 and z == 0:
+        return 0.0
+    return math.degrees(math.atan2(-x, -z)) % 360.0
 
 
 def hand_zone(color, x, z, rot_y):
@@ -293,18 +321,21 @@ def dealer_marker(image_url, pos):
     })
 
 
-def pili_bag(image_url):
+def token_bag(image_url, pos, bag_notes, bag_nick, bag_desc,
+             token_notes, token_nick, token_desc, scale=1.4):
+    """An Infinite_Bag holding one prototype Custom_Token, the pattern both
+    the Pili and trick-token supplies use. Every Custom_Token in ~450 checked
+    across 28 real workshop mods leaves ImageSecondaryURL empty, Stackable or
+    not - TTS mirrors the front onto the back by itself when it is empty and
+    Stackable is false. An earlier attempt here explicitly set the same URL
+    on both sides on the theory that Stackable alone caused a blank back;
+    that was an unverified guess and the actual reported symptom (blank
+    back) suggests it was wrong."""
     token = dict(BASE_FLAGS, **{
         "GUID": guid(), "Name": "Custom_Token",
-        "Transform": transform((POS_PILIS[0], POS_PILIS[1] + 1, POS_PILIS[2]), (0, 0, 0), 0.55),
-        "Nickname": "Pili", "Description": "One trick off your bet = one Pili.",
-        "GMNotes": "PILI:TOKEN",
-        # Every Custom_Token in ~450 checked across 28 real workshop mods leaves
-        # ImageSecondaryURL empty, Stackable or not - TTS mirrors the front onto
-        # the back by itself when it is empty and Stackable is false. An earlier
-        # attempt here explicitly set the same URL on both sides on the theory
-        # that Stackable alone caused a blank back; that was an unverified guess
-        # and the actual reported symptom (blank back) suggests it was wrong.
+        "Transform": transform((pos[0], pos[1] + 1, pos[2]), (0, 0, 0), 0.55),
+        "Nickname": token_nick, "Description": token_desc,
+        "GMNotes": token_notes,
         "CustomImage": {
             "ImageURL": image_url, "ImageSecondaryURL": "",
             "ImageScalar": 1.0, "WidthScale": 0.0,
@@ -317,9 +348,9 @@ def pili_bag(image_url):
     })
     return dict(BASE_FLAGS, **{
         "GUID": guid(), "Name": "Infinite_Bag",
-        "Transform": transform(POS_PILIS, (0, 0, 0), 1.4),
-        "Nickname": "Pilis", "Description": "Drag out a Pili. 6 ends the game.",
-        "GMNotes": "PILI:BAG", "MaterialIndex": -1, "MeshIndex": -1,
+        "Transform": transform(pos, (0, 0, 0), scale),
+        "Nickname": bag_nick, "Description": bag_desc,
+        "GMNotes": bag_notes, "MaterialIndex": -1, "MeshIndex": -1,
         "Hands": False,
         "ContainedObjects": [token],
         "LuaScript": "", "LuaScriptState": "", "XmlUI": "",
@@ -398,59 +429,65 @@ def build(missions, urls, out_dir, aspects=None):
     # place by layoutTable() at load, measured off the hand zones - so the hand
     # zone is the single source of truth for where a seat is, and correcting
     # SEATS re-lays the whole table automatically.
+    #
+    # No trick mat, no Pili tray - see the module docstring-equivalent note
+    # in CLAUDE.md ("Trick and Pili storage"). Cards from a resolved trick go
+    # to the shared discard; the trick's winner drags one trick-token from
+    # PILI:TRICKBAG onto their own dump zone, exactly as Pilis already work
+    # (givePilis() in global.lua). One dump zone per seat holds both token
+    # kinds - players sort out whose is whose, and clear the trick-tokens
+    # back to the supply themselves at reset (or gather() does it - see
+    # global.lua). That is one fewer footprint than the rectangle needed,
+    # which is what let both remaining pieces sit closer to the seat's own
+    # edge of the felt than the rectangle's dibber/tray ever did.
     for colour, sx, sz, rot_y in SEATS:
         objects.append(hand_zone(colour, sx, sz, rot_y))
 
-        mx, mz = seat_spot(sx, sz, OUT_MAT)
-        objects.append(custom_tile(urls["mat"], (mx, 1.2, mz), rot_y,
-                                   f"{colour} tricks", f"PILI:MAT:{colour}",
-                                   scale=1.4, aspect=aspects.get("mat", 1.0)))
-        objects.append(scripting_zone((mx, 2.2, mz), rot_y,
-                                      f"PILI:TRICKS:{colour}",
-                                      size=(4.4, 4.0, 4.0)))
-
-        bx, bz = seat_spot(sx, sz, OUT_CTRL, SIDE_CTRL)
+        bx, bz = seat_spot(sx, sz, rot_y, OUT_CTRL)
         objects.append(custom_tile(urls["dibber"], (bx, 1.2, bz), rot_y,
                                    f"{colour} bid", f"PILI:DIBBER:{colour}",
                                    scale=1.1, aspect=aspects.get("dibber", 1.0)))
 
-        px, pz = seat_spot(sx, sz, OUT_CTRL, -SIDE_CTRL)
-        objects.append(custom_tile(urls["tray"], (px, 1.2, pz), rot_y,
-                                   f"{colour} pilis", f"PILI:TRAY:{colour}",
-                                   scale=1.2))
-        objects.append(scripting_zone((px, 2.2, pz), rot_y,
-                                      f"PILI:PILIS:{colour}",
-                                      size=(3.2, 4.0, 3.2)))
+        dx, dz = seat_spot(sx, sz, rot_y, OUT_CTRL, SIDE_DUMP)
+        objects.append(custom_tile(urls["dump"], (dx, 1.2, dz), rot_y,
+                                   f"{colour} dump", f"PILI:DUMP:{colour}",
+                                   scale=2.4, aspect=aspects.get("dump", 1.0)))
+        objects.append(scripting_zone((dx, 2.2, dz), rot_y,
+                                      f"PILI:DUMP:{colour}",
+                                      size=(DUMP_HALF * 2, 4.0, DUMP_HALF * 2)))
 
-    # rot_y here is about which way "up" in the plaque's own artwork points in
-    # the world - at rot_y=0 that's world +z (the same baked default the
-    # south row's own tiles use), at rot_y=180 world -z, at rot_y=90 world +x.
-    # These three objects aren't tied to a seat, so the row convention above
-    # doesn't apply automatically - each needs it worked out from its own
-    # position instead of inheriting 0.0 by default (the bug reported after
-    # the last build: everything not tied to a seat came out facing away from
-    # the table instead of into it).
-    # POS_BUTTON sits on the centreline but closer to the north row (z=+10,
-    # between centre and the north mats at ~+18) than the south - oriented to
-    # match the north row's own rot_y=180 so it faces those nearest players.
-    objects.append(custom_tile(urls["button"], POS_BUTTON, 180.0,
+    # Next Round and New Game aren't tied to a seat, so - same lesson as the
+    # rectangle table's first pass, which shipped everything at a lazy
+    # rot_y=0.0 and had it all facing away from the table - their facing has
+    # to be worked out from their own position, not inherited. face_centre()
+    # generalises SEATS' own rotation formula (rotY such that a tile's baked
+    # "up" points at the table centre) to any position, seat or not. They
+    # share ONE rotation (their cluster's own midpoint, not each one's own
+    # slightly different angle) so the pair reads as one matched control
+    # rather than two tiles tilted at a visible angle to each other - and so
+    # neither one's footprint reaches further towards the other than its
+    # plain half-width, which an off-axis rotation would otherwise do.
+    ctrl_rot = face_centre((POS_BUTTON[0] + POS_NEWGAME[0]) / 2,
+                           (POS_BUTTON[2] + POS_NEWGAME[2]) / 2)
+    objects.append(custom_tile(urls["button"], POS_BUTTON, ctrl_rot,
                                "Next Round", "PILI:BUTTON", scale=1.6,
                                aspect=aspects.get("button", 1.0)))
-    # POS_MTOGGLE sits on the open west flank, off the felt's centreline
-    # entirely - rot_y=90 points its "up" toward world +x, i.e. into the
-    # table from that edge, rather than toward north/south where nobody
-    # relevant is standing.
-    objects.append(custom_tile(urls["mtoggle"], POS_MTOGGLE, 90.0,
+    objects.append(custom_tile(urls["newgame"], POS_NEWGAME, ctrl_rot,
+                               "New Game", "PILI:NEWGAME", scale=1.6,
+                               aspect=aspects.get("newgame", 1.0)))
+    objects.append(custom_tile(urls["mtoggle"], POS_MTOGGLE,
+                               face_centre(POS_MTOGGLE[0], POS_MTOGGLE[2]),
                                "Missions toggle", "PILI:MTOGGLE", scale=1.1,
                                aspect=aspects.get("mtoggle", 1.0)))
-    # straight in front of the seat, in the gap the dibber and tray leave
-    # Extrapolated past the first seat's dibber, away from its tray - the
-    # same formula passDealer() uses in global.lua to reposition the marker
-    # every round after this one, so the very first frame matches what every
-    # later round will look like rather than starting from a different spot.
-    d0x, d0z = seat_spot(SEATS[0][1], SEATS[0][2], OUT_CTRL, SIDE_CTRL)
-    t0x, t0z = seat_spot(SEATS[0][1], SEATS[0][2], OUT_CTRL, -SIDE_CTRL)
-    dx, dz = d0x + (d0x - t0x) * 0.6, d0z + (d0z - t0z) * 0.6
+    # straight in front of the seat, toward the dump zone
+    # Extrapolated past the first seat's dibber, away from its dump zone -
+    # the same formula passDealer() uses in global.lua to reposition the
+    # marker every round after this one, so the very first frame matches
+    # what every later round will look like rather than starting from a
+    # different spot.
+    d0x, d0z = seat_spot(SEATS[0][1], SEATS[0][2], SEATS[0][3], OUT_CTRL)
+    p0x, p0z = seat_spot(SEATS[0][1], SEATS[0][2], SEATS[0][3], OUT_CTRL, SIDE_DUMP)
+    dx, dz = d0x + (d0x - p0x) * 0.6, d0z + (d0z - p0z) * 0.6
     objects.append(dealer_marker(urls["dealer"], (dx, 1.6, dz)))
 
     # play deck: 1-55 plus the Joker
@@ -476,16 +513,21 @@ def build(missions, urls, out_dir, aspects=None):
                                POS_MISSION, (0, 180, 180)))
     objects.append(deck(2, miss_cards, "Missions", "PILI:MISSION", cd_miss, POS_MISSION))
 
-    objects.append(pili_bag(urls["pili"]))
-    # The PDF viewer itself is confirmed working (opens, flips pages, locked
-    # in place as intended) on the old table - only its placement needs
-    # redoing here. Sits right next to POS_MTOGGLE on the same west flank
-    # (see the comment there) rather than on the centreline, where it read
-    # as sat in the middle of the play area for no reason. rot_y=90 for the
-    # same reason as POS_MTOGGLE just above - it faces into the table (world
-    # +x) rather than toward north/south, which is meaningless out on this
-    # flank.
-    objects.append(rulebook_pdf(urls["rulebook"], (-38.0, 1.3, -6.0), rot_y=90.0))
+    objects.append(token_bag(
+        urls["pili"], POS_PILIS, "PILI:BAG", "Pilis",
+        "Drag out a Pili when you owe one. Hand-tracked - agree between "
+        "yourselves when someone's had enough, then hit New Game.",
+        "PILI:TOKEN", "Pili", "One trick off your bet = one Pili."))
+    objects.append(token_bag(
+        urls["trick"], POS_TRICKBAG, "PILI:TRICKBAG", "Trick tokens",
+        "Won a trick? Drag one into your own dump zone. Cleared away "
+        "automatically at the next deal.",
+        "PILI:TRICKTOKEN", "Trick", "One of these = one trick won this round."))
+    # Sits near POS_MTOGGLE rather than on the centreline, same reasoning as
+    # that tile - face_centre() works out which way is "into the table" from
+    # wherever it actually sits.
+    objects.append(rulebook_pdf(urls["rulebook"], (-4.0, 1.3, -9.5),
+                                rot_y=face_centre(-4.0, -9.5)))
 
     # snap points for played cards, ringed tightly around the middle
     snaps = []
@@ -497,7 +539,7 @@ def build(missions, urls, out_dir, aspects=None):
             "Rotation": {"x": 0.0, "y": 180.0, "z": 0.0},
             "Tags": [],
         })
-    for spot in (POS_REVEAL, POS_ASIDE):
+    for spot in (POS_REVEAL, POS_ASIDE, POS_DISCARD):
         snaps.append({"Position": {"x": spot[0], "y": 1.02, "z": spot[2]},
                       "Rotation": {"x": 0.0, "y": 0.0, "z": 0.0}, "Tags": []})
 
@@ -525,8 +567,14 @@ def build(missions, urls, out_dir, aspects=None):
         "Tags": ["Card Game", "Trick Taking", "Party"],
         "Gravity": 0.5,
         "PlayArea": 0.5,
-        "Table": "Table_Custom",
-        "TableURL": urls["felt"],
+        # Table_Circular is a built-in table, not a Custom one - confirmed
+        # against the one real Table_Circular mod installed locally, it has
+        # no "TableURL" key at all. Unlike Table_Custom, there is no way to
+        # put our own felt art on it; this is TTS's own stock circular
+        # table surface, whatever that looks like. art.felt() is kept
+        # (harmless, and useful again if a Custom table ever comes back)
+        # but nothing here references its output any more.
+        "Table": "Table_Circular",
         "Sky": "Sky_Museum",
         "Note": "Unofficial fan implementation of Pili Pili by ATM Gaming.",
         "TabStates": {
@@ -597,9 +645,10 @@ def main():
     if args.skip_art:
         names = {"play_face": "play_faces.png", "mission_face": "mission_faces.png",
                  "play_back": "play_back.png", "mission_back": "mission_back.png",
-                 "pili": "pili_token.png", "dibber": "dibber.png",
-                 "button": "round_button.png", "dealer": "dealer.png",
-                 "mat": "mat_tricks.png", "tray": "mat_pilis.png",
+                 "pili": "pili_token.png", "trick": "trick_token.png",
+                 "dibber": "dibber.png", "dump": "dump_area.png",
+                 "button": "round_button.png", "newgame": "new_game_button.png",
+                 "dealer": "dealer.png",
                  "mtoggle": "mission_toggle.png", "felt": "felt.png"}
         files = {k: os.path.join(art.ASSETS, v) for k, v in names.items()}
     else:
@@ -642,7 +691,7 @@ def main():
 
     from PIL import Image as _Image
     aspects = {}
-    for key in ("mat", "dibber", "button", "mtoggle"):
+    for key in ("dibber", "dump", "button", "newgame", "mtoggle"):
         with _Image.open(files[key]) as im:
             aspects[key] = im.height / im.width
 

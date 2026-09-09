@@ -480,6 +480,31 @@ def pili_token():
     return img.resize((512, 512), Image.LANCZOS)
 
 
+def trick_token():
+    """One per trick won - same disc-and-glyph construction as the Pili
+    token, but a gold hand (taking a trick) instead of a red chilli (an
+    unmet bet), so the two are unmistakable from across the table even
+    though they share a dump zone."""
+    s = 512 * 2
+    img = Image.new("RGBA", (s, s), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    d.ellipse([8, 8, s - 8, s - 8], fill=(24, 20, 12, 255))
+    img.alpha_composite(glyphs.scatter((s, s), seed=53, colour=(58, 50, 34),
+                                       count=18, glyph_px=int(s * 0.16)))
+    ring = Image.new("L", (s, s), 0)
+    ImageDraw.Draw(ring).ellipse([8, 8, s - 8, s - 8], fill=255)
+    img.putalpha(ring)
+
+    cs = int(s * 0.62)
+    b = Image.new("L", (cs, cs), 0)
+    glyphs._sil_hand(ImageDraw.Draw(b), cs, random.Random(4))
+    b = glyphs.roughen(b, amount=cs * 0.01)
+    pod = Image.new("RGBA", (cs, cs), (0, 0, 0, 0))
+    pod.paste(Image.new("RGBA", (cs, cs), (232, 196, 92, 255)), (0, 0), b)
+    img.alpha_composite(pod, ((s - cs) // 2, (s - cs) // 2))
+    return img.resize((512, 512), Image.LANCZOS)
+
+
 # Table_Custom's real felt is 44 x 26 (FELT_X/FELT_Z in build_save.py - must
 # match, same convention as the FELT_X/FELT_Z duplicated between build_save.py
 # and layout_preview.py already). TableURL doesn't get scaled to that size by
@@ -587,6 +612,15 @@ def generate(missions, progress=True):
            chilli=True, title_frac=0.15).save(p, "PNG", optimize=True)
     out["button"] = p
 
+    p = os.path.join(ASSETS, "new_game_button.png")
+    # Same plaque language as Next Round, deliberately duller (no chilli,
+    # a colder accent) - the two sit right next to each other as one shared
+    # control, and shouldn't compete for the eye the way two equally hot
+    # reds would.
+    plaque(700, 700, "NEW GAME", ground=(18, 20, 24), accent=(120, 150, 200),
+           title_frac=0.16).save(p, "PNG", optimize=True)
+    out["newgame"] = p
+
     p = os.path.join(ASSETS, "dealer.png")
     dealer_token().save(p, "PNG", optimize=True)
     out["dealer"] = p
@@ -599,16 +633,14 @@ def generate(missions, progress=True):
            title_frac=0.13, title_y=0.20).save(p, "PNG", optimize=True)
     out["mtoggle"] = p
 
-    # mats are backdrops, so they stay quiet: dark, thin border, small type
-    p = os.path.join(ASSETS, "mat_tricks.png")
-    plaque(700, 700, "TRICKS WON", ground=(24, 23, 22), accent=(74, 70, 66),
-           title_frac=0.075).save(p, "PNG", optimize=True)
-    out["mat"] = p
-
-    p = os.path.join(ASSETS, "mat_pilis.png")
-    plaque(500, 500, "PILIS", ground=(30, 20, 19), accent=(96, 44, 40),
-           title_frac=0.13).save(p, "PNG", optimize=True)
-    out["tray"] = p
+    # No more separate tricks-mat/pili-tray: both trick tokens and Pilis now
+    # land in one open dump zone per seat (players sort it out themselves),
+    # so there's one quiet backdrop marking where that zone is rather than
+    # two labelled plaques for two now-merged purposes.
+    p = os.path.join(ASSETS, "dump_area.png")
+    plaque(700, 700, None, ground=(24, 23, 22), accent=(74, 70, 66)).save(
+        p, "PNG", optimize=True)
+    out["dump"] = p
 
     say("backs and token")
     p = os.path.join(ASSETS, "play_back.png")
@@ -622,6 +654,10 @@ def generate(missions, progress=True):
     p = os.path.join(ASSETS, "pili_token.png")
     pili_token().save(p, "PNG", optimize=True)
     out["pili"] = p
+
+    p = os.path.join(ASSETS, "trick_token.png")
+    trick_token().save(p, "PNG", optimize=True)
+    out["trick"] = p
 
     return out
 

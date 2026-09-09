@@ -152,10 +152,14 @@ for o in save["ObjectStates"]:
         notes[n] += 1
 
 for seat in seats:
-    for pre in ("PILI:DIBBER:", "PILI:TRICKS:", "PILI:PILIS:",
-                "PILI:MAT:", "PILI:TRAY:"):
-        check(f"  {pre}{seat}", notes.get(pre + seat) == 1)
-for single in ("PILI:BUTTON", "PILI:DEALER", "PILI:BAG", "PILI:MTOGGLE"):
+    check(f"  PILI:DIBBER:{seat}", notes.get("PILI:DIBBER:" + seat) == 1)
+    # the dump zone's backdrop tile and its ScriptingTrigger deliberately
+    # share one tag - unlike the old separate mat/tray + tricks/pilis tags,
+    # there's only one functional zone here for the script to find, so a
+    # second bookkeeping-only tag would have no purpose.
+    check(f"  PILI:DUMP:{seat} (tile + zone)", notes.get("PILI:DUMP:" + seat) == 2)
+for single in ("PILI:BUTTON", "PILI:NEWGAME", "PILI:DEALER", "PILI:BAG",
+              "PILI:TRICKBAG", "PILI:MTOGGLE"):
     check(f"  exactly one {single}", notes.get(single) == 1)
 
 check("turn system enabled", save["Turns"]["Enable"] is True)
@@ -202,7 +206,7 @@ else:
     check("  MAX_BID found in script", False)
 
 # tags the script looks for must match the tags the save actually writes
-for tag in ("PILI:PLAY", "PILI:MISSION", "PILI:TOKEN"):
+for tag in ("PILI:PLAY", "PILI:MISSION", "PILI:TOKEN", "PILI:TRICKTOKEN"):
     check(f"  tag {tag} used by both", tag in lua and any(
         tag == o.get("GMNotes") or any(c.get("GMNotes") == tag
                                        for c in o.get("ContainedObjects", []))

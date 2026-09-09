@@ -1,22 +1,31 @@
 -- Pili Pili - Tabletop Simulator table script
 --
 -- Everything lives on the table: a chilli button in the middle that runs the
--- round, a +/- dibber in front of each seat for that player's bet, a mat where
--- you stack the tricks you win, and a tray your Pilis land in.
+-- round, a dibber in front of each seat for that player's bet, and one open
+-- dump zone per seat where trick-tokens and Pilis both land - players sort
+-- it out themselves, nothing is tracked per-slot.
 --
--- The button never has to work out who won a trick. Every trick holds exactly
--- one card per player, so tricks won = cards in your pile / number of players.
--- That keeps the missions that rewrite trick resolution (Upside Down and the
--- rest) entirely out of the script's business.
+-- The button never has to work out who won a trick. A resolved trick's
+-- cards go to the shared discard and the winner drags one token from
+-- PILI:TRICKBAG into their own dump zone - the script just counts tokens
+-- (trickCount()), the same way it already counted Pilis. No card-counting,
+-- no division, no "what do you do with the extras": a token either landed
+-- in your zone or it didn't. That keeps the missions that rewrite trick
+-- resolution (Upside Down and the rest) entirely out of the script's
+-- business, same as before - it never had to know who won, only count what
+-- ended up where.
+--
+-- Pilis are dished out automatically (givePilis(), unchanged) but the game
+-- no longer ends itself: PILI_LIMIT is a reference number for the players to
+-- judge by eye, not a script-enforced gate. New Game (PILI:NEWGAME) is a
+-- manual reset - press it once you've agreed someone's lost.
 
 TAG_PLAY = "PILI:PLAY"
 TAG_MISSION = "PILI:MISSION"
 TAG_DIBBER = "PILI:DIBBER:"
-TAG_TRICKS = "PILI:TRICKS:"
-TAG_PILIS = "PILI:PILIS:"
-TAG_MAT = "PILI:MAT:"
-TAG_TRAY = "PILI:TRAY:"
+TAG_DUMP = "PILI:DUMP:"
 TAG_BUTTON = "PILI:BUTTON"
+TAG_NEWGAME = "PILI:NEWGAME"
 TAG_DEALER = "PILI:DEALER"
 TAG_MTOGGLE = "PILI:MTOGGLE"
 
@@ -137,6 +146,17 @@ function buildControls()
         })
     end
 
+    local ng = one(TAG_NEWGAME)
+    if ng ~= nil then
+        ng.clearButtons()
+        ng.createButton({
+            click_function = "newGame", function_owner = Global, label = "",
+            position = {0, 0.3, 0}, width = 1500, height = 700,
+            color = {0, 0, 0, 0},
+            tooltip = "Clear everyone's Pilis and start a fresh game",
+        })
+    end
+
     local mt = one(TAG_MTOGGLE)
     if mt ~= nil then
         mt.clearButtons()
@@ -209,12 +229,12 @@ BTN_FORBIDDEN = {0.22, 0.20, 0.19}
 FONT_FORBIDDEN = {0.50, 0.47, 0.45}
 
 -- The seat/outward split below (see the two comments inline) relies on every
--- seat's dibber facing the table centre - true for both rotY values this
--- table uses (0 for the south row, 180 for the north; see SEATS in
--- build_save.py), since local +Z rotates to point at the centre either way.
--- No per-seat exception needed here, unlike the old poker table's corner
--- seats, which used an off-axis rotation this same z-axis math never
--- actually got checked against.
+-- seat's dibber facing the table centre - true for every seat on a circular
+-- table regardless of its particular rotY (see face_centre() and SEATS in
+-- build_save.py: local +Z always rotates to point at the centre, whatever
+-- angle that seat sits at), so there is no per-seat exception to track here
+-- - unlike the old poker table's corner seats, which used an off-axis
+-- rotation this same z-axis math never actually got checked against.
 function buildDibberButtons()
     for _, d in ipairs(tagged(TAG_DIBBER, false)) do
         d.clearButtons()
@@ -360,29 +380,22 @@ end
 
 -- ------------------------------------------------------------------ scoring --
 
-function zoneCount(tag, colour)
-    local z = one(tag .. colour)
+-- Both token kinds share one zone per seat (TAG_DUMP) - tokenCount() counts
+-- whichever GMNotes tag it's asked for, and piliCount()/trickCount() are
+-- just that with the tag baked in, so every other call site keeps reading
+-- like it did when they were separate functions.
+function tokenCount(colour, notes)
+    local z = one(TAG_DUMP .. colour)
     if z == nil then return 0 end
     local n = 0
     for _, o in ipairs(z.getObjects()) do
-        if o.type == "Card" then
-            n = n + 1
-        elseif o.type == "Deck" then
-            n = n + #o.getObjects()
-        end
+        if o.getGMNotes() == notes then n = n + 1 end
     end
     return n
 end
 
-function piliCount(colour)
-    local z = one(TAG_PILIS .. colour)
-    if z == nil then return 0 end
-    local n = 0
-    for _, o in ipairs(z.getObjects()) do
-        if o.getGMNotes() == "PILI:TOKEN" then n = n + 1 end
-    end
-    return n
-end
+function piliCount(colour) return tokenCount(colour, "PILI:TOKEN") end
+function trickCount(colour) return tokenCount(colour, "PILI:TRICKTOKEN") end
 
 function scoreRound()
     local seated = getSeatedPlayers()
@@ -391,8 +404,7 @@ function scoreRound()
     local bag = one("PILI:BAG")
     local lines = {}
     for _, c in ipairs(seated) do
-        local cards = zoneCount(TAG_TRICKS, c)
-        local tricks = math.floor(cards / #seated + 0.5)
+        local tricks = trickCount(c)
         local bet = bids[c]
         if bet == nil then
             table.insert(lines, c .. " never bet")
@@ -411,7 +423,7 @@ function scoreRound()
 end
 
 function givePilis(colour, n, bag)
-    local z = one(TAG_PILIS .. colour)
+    local z = one(TAG_DUMP .. colour)
     if bag == nil or z == nil then return end
     local p = z.getPosition()
     for i = 1, n do
@@ -425,27 +437,50 @@ function givePilis(colour, n, bag)
     end
 end
 
-function checkGameOver()
-    local worst, hits = 0, {}
+-- Was checkGameOver() - used to gate nextRound() automatically once someone
+-- hit PILI_LIMIT, computed from piliCount() on the old per-seat Pili tray.
+-- Pili tracking is hand-tracked by the players now (see the header note and
+-- newGame() below): this just formats the same standings message, called
+-- when a player decides to end the game instead of the script deciding for
+-- them. Reports whoever's furthest over PILI_LIMIT alongside the fewest,
+-- rather than gating on the limit at all - by the time someone bothers to
+-- press New Game they've already agreed it's over.
+function standingsMessage()
+    local worst, worstColour, best = -1, nil, 9999
     for _, c in ipairs(getSeatedPlayers()) do
         local n = piliCount(c)
-        if n > worst then worst = n end
-        if n >= PILI_LIMIT then table.insert(hits, c) end
+        if n > worst then worst, worstColour = n, c end
+        best = math.min(best, n)
     end
-    if #hits == 0 then return false end
-
-    local best = 9999
-    for _, c in ipairs(getSeatedPlayers()) do
-        best = math.min(best, piliCount(c))
-    end
+    if worstColour == nil then return "No one seated." end
     local winners = {}
     for _, c in ipairs(getSeatedPlayers()) do
         if piliCount(c) == best then table.insert(winners, c) end
     end
-    broadcastToAll(table.concat(hits, " & ") .. " reached " .. PILI_LIMIT ..
-        " Pilis - game over. Fewest Pilis: " .. table.concat(winners, " & ") ..
-        " on " .. best .. ".", HOT)
-    return true
+    return worstColour .. " had the most Pilis (" .. worst .. "). Fewest: " ..
+        table.concat(winners, " & ") .. " on " .. best .. "."
+end
+
+function newGame()
+    if busy then return end
+    local seated = getSeatedPlayers()
+    if #seated == 0 then
+        broadcastToAll("Nobody is seated in a player colour.", HOT)
+        return
+    end
+    broadcastToAll("New game. " .. standingsMessage(), HOT)
+    for _, c in ipairs(seated) do
+        local z = one(TAG_DUMP .. c)
+        if z ~= nil then
+            for _, o in ipairs(z.getObjects()) do
+                if o.getGMNotes() == "PILI:TOKEN" then o.destruct() end
+            end
+        end
+    end
+    bids = {}
+    dealt = 0
+    busy = false
+    buildDibberButtons()
 end
 
 -- ------------------------------------------------------------------ round --
@@ -512,19 +547,28 @@ function nextRound()
         scoreRound()
     end
 
+    -- No more automatic game-over gate here - see newGame() and the header
+    -- note. The round just keeps going; players call New Game themselves
+    -- once they've agreed it's over.
     Wait.time(function()
-        if dealt > 0 and checkGameOver() then
-            busy = false
-            dealt = 0
-            bids = {}
-            buildDibberButtons()
-            return
-        end
         sweepAndDeal(seated)
     end, dealt > 0 and 1.6 or 0.1)
 end
 
 function sweepAndDeal(seated)
+    -- Trick-tokens are temporary for the round (see the header note) -
+    -- cleared here, same "tidy up before the next deal" moment gather()
+    -- already handles for the cards. Pilis are untouched - those persist
+    -- until newGame() clears them.
+    for _, c in ipairs(seated) do
+        local z = one(TAG_DUMP .. c)
+        if z ~= nil then
+            for _, o in ipairs(z.getObjects()) do
+                if o.getGMNotes() == "PILI:TRICKTOKEN" then o.destruct() end
+            end
+        end
+    end
+
     -- old mission out of the way, if one was in play
     local live = missionInPlay()
     if live ~= nil then
@@ -679,13 +723,13 @@ function passDealer()
     -- code here) put it on top of the dibber every single round after the
     -- first - the build-time placement was fixed once, but this runtime path
     -- runs every round and was never touched, so the bug never actually went
-    -- away. Extrapolate past the dibber, away from the tray, using the two
-    -- tiles' real positions - works for every seat, not just the one seat a
-    -- build-time constant could describe.
+    -- away. Extrapolate past the dibber, away from the dump zone, using the
+    -- two tiles' real positions - works for every seat, not just the one
+    -- seat a build-time constant could describe.
     local dibber = one(TAG_DIBBER .. nxt)
-    local tray = one(TAG_TRAY .. nxt)
-    if dibber ~= nil and tray ~= nil then
-        local dp, tp = dibber.getPosition(), tray.getPosition()
+    local dump = one(TAG_DUMP .. nxt)
+    if dibber ~= nil and dump ~= nil then
+        local dp, tp = dibber.getPosition(), dump.getPosition()
         marker.setPositionSmooth({
             dp.x + (dp.x - tp.x) * 0.6, dp.y + 1.0, dp.z + (dp.z - tp.z) * 0.6,
         })

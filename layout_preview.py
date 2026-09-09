@@ -7,20 +7,22 @@ footprint. Overlaps and things hanging off the felt are obvious here and
 almost impossible to judge from a list of coordinates.
 """
 import json
+import math
 import os
 import sys
 
 from PIL import Image, ImageDraw, ImageFont
 
-# Table_Custom's felt: a plain rectangle (see FELT_X/FELT_Z in build_save.py -
-# must match, or this stops being a meaningful check on it). Unlike the old
-# Table_Poker this replaced, there is no stadium shape and no curved end-caps
-# to approximate - a straight bounds check is exact here.
-FELT_X, FELT_Z = 44.0, 26.0
+# Table_Circular's felt: a plain circle (see FELT_R in build_save.py - must
+# match, or this stops being a meaningful check on it). Weaker evidence than
+# the rectangle's own FELT_X/FELT_Z had (see the CAVEAT on FELT_R there) -
+# this is inferred from where real hand zones sit, not independently
+# measured, so treat "on felt" here as provisional too.
+FELT_R = 21.51
 
 
 def on_felt(x, z):
-    return abs(x) <= FELT_X and abs(z) <= FELT_Z
+    return math.hypot(x, z) <= FELT_R
 PX = 18                      # pixels per TTS unit
 MARGIN = 30
 
@@ -37,20 +39,57 @@ STYLE = {
 }
 
 
+def corners(x, z, ex, ez, rot_y):
+    """The 4 world-space corners of a footprint centred at (x, z), half-size
+    (ex, ez), rotated rot_y degrees about Y. Seats here sit at arbitrary
+    angles (0/60/120/...), not just 0/180 the way the rectangle table's did
+    - an axis-aligned box would be wrong for a rotated footprint, so this
+    (and the SAT overlap check below) replaced the old simpler axis-aligned
+    version once rotation stopped being just "flipped or not"."""
+    r = math.radians(rot_y)
+    cos_r, sin_r = math.cos(r), math.sin(r)
+    pts = []
+    for lx, lz in ((-ex, -ez), (ex, -ez), (ex, ez), (-ex, ez)):
+        pts.append((x + lx * cos_r + lz * sin_r, z - lx * sin_r + lz * cos_r))
+    return pts
+
+
+def _axes(poly):
+    axes = []
+    for i in range(len(poly)):
+        x1, z1 = poly[i]
+        x2, z2 = poly[(i + 1) % len(poly)]
+        ex, ez = x2 - x1, z2 - z1
+        axes.append((-ez, ex))
+    return axes
+
+
+def polys_overlap(a, b):
+    """Separating Axis Theorem for two convex polygons (here, always
+    quadrilaterals) - the general case a same-angle axis-aligned box check
+    can't handle once footprints can sit at any rotation."""
+    for ax, az in _axes(a) + _axes(b):
+        proj_a = [px * ax + pz * az for px, pz in a]
+        proj_b = [px * ax + pz * az for px, pz in b]
+        if max(proj_a) < min(proj_b) or max(proj_b) < min(proj_a):
+            return False
+    return True
+
+
 def main(save_path, out_path):
     save = json.load(open(save_path, encoding="utf-8"))
-    w = int(FELT_X * 2 * PX) + MARGIN * 2
-    h = int(FELT_Z * 2 * PX) + MARGIN * 2
+    w = int(FELT_R * 2 * PX) + MARGIN * 2
+    h = int(FELT_R * 2 * PX) + MARGIN * 2
     img = Image.new("RGB", (w, h), (26, 30, 26))
     d = ImageDraw.Draw(img, "RGBA")
     small = ImageFont.truetype(FONT, 11)
     tiny = ImageFont.truetype(FONT, 9)
 
     def to_px(x, z):
-        return (MARGIN + (x + FELT_X) * PX, MARGIN + (z + FELT_Z) * PX)
+        return (MARGIN + (x + FELT_R) * PX, MARGIN + (z + FELT_R) * PX)
 
-    d.rectangle([to_px(-FELT_X, -FELT_Z), to_px(FELT_X, FELT_Z)],
-               fill=(38, 92, 46), outline=(70, 130, 76), width=2)
+    d.ellipse([to_px(-FELT_R, -FELT_R), to_px(FELT_R, FELT_R)],
+             fill=(38, 92, 46), outline=(70, 130, 76), width=2)
     cx, cz = to_px(0, 0)
     d.line([(cx, MARGIN), (cx, h - MARGIN)], fill=(255, 255, 255, 26))
     d.line([(MARGIN, cz), (w - MARGIN, cz)], fill=(255, 255, 255, 26))
@@ -69,7 +108,7 @@ def main(save_path, out_path):
             continue
         colour, kind = STYLE[name]
         t = o["Transform"]
-        x, z = t["posX"], t["posZ"]
+        x, z, rot_y = t["posX"], t["posZ"], t.get("rotY", 0.0)
         sx, sz = t.get("scaleX", 1.0), t.get("scaleZ", 1.0)
 
         if kind == "seat":
@@ -83,37 +122,37 @@ def main(save_path, out_path):
         else:
             ex, ez = sx * 0.9, sz * 0.9
 
-        p0, p1 = to_px(x - ex, z - ez), to_px(x + ex, z + ez)
+        poly = corners(x, z, ex, ez, rot_y)
+        px = [to_px(cx_, cz_) for cx_, cz_ in poly]
         if kind == "seat":
-            d.rectangle([p0, p1], outline=colour + (170,), width=2)
-            hand_zones.append((x - ex, z - ez, x + ex, z + ez,
-                               o.get("FogColor", "?") + " hand"))
+            d.polygon(px, outline=colour + (170,), width=2)
+            hand_zones.append((poly, o.get("FogColor", "?") + " hand"))
         elif kind == "zone":
-            d.rectangle([p0, p1], outline=colour + (200,), width=1)
+            d.polygon(px, outline=colour + (200,), width=1)
         else:
-            d.rectangle([p0, p1], fill=colour + (200,), outline=(20, 20, 20), width=1)
-            footprints.append((x - ex, z - ez, x + ex, z + ez,
-                               o.get("Nickname") or name))
+            d.polygon(px, fill=colour + (200,), outline=(20, 20, 20), width=1)
+            footprints.append((poly, o.get("Nickname") or name))
 
         label = o.get("FogColor") or o.get("Nickname") or ""
         if label:
-            d.text(((p0[0] + p1[0]) / 2, (p0[1] + p1[1]) / 2), label[:14],
-                   font=tiny, fill=(15, 15, 15) if kind not in ("seat", "zone")
-                   else colour, anchor="mm")
+            mx = sum(p[0] for p in px) / 4
+            mz = sum(p[1] for p in px) / 4
+            d.text((mx, mz), label[:14], font=tiny,
+                   fill=(15, 15, 15) if kind not in ("seat", "zone") else colour,
+                   anchor="mm")
 
     # flag overlaps between solid objects and anything off the felt
     problems = []
     for i in range(len(footprints)):
-        ax0, az0, ax1, az1, an = footprints[i]
-        corners = [(ax0, az0), (ax1, az0), (ax0, az1), (ax1, az1)]
-        if not all(on_felt(cx, cz) for cx, cz in corners):
+        a_poly, an = footprints[i]
+        if not all(on_felt(cx_, cz_) for cx_, cz_ in a_poly):
             problems.append(f"off the felt: {an}")
         for j in range(i + 1, len(footprints)):
-            bx0, bz0, bx1, bz1, bn = footprints[j]
-            if ax0 < bx1 and bx0 < ax1 and az0 < bz1 and bz0 < az1:
+            b_poly, bn = footprints[j]
+            if polys_overlap(a_poly, b_poly):
                 problems.append(f"overlap: {an}  x  {bn}")
-        for hx0, hz0, hx1, hz1, hn in hand_zones:
-            if ax0 < hx1 and hx0 < ax1 and az0 < hz1 and hz0 < az1:
+        for h_poly, hn in hand_zones:
+            if polys_overlap(a_poly, h_poly):
                 problems.append(f"IN A HAND ZONE: {an}  x  {hn}")
 
     d.text((MARGIN, 8), os.path.basename(save_path)
