@@ -614,18 +614,23 @@ def generate(missions, progress=True):
 
     # Requested plain: no chilli icon, no background texture, thin border -
     # "just the text", since these two sit close together as one small
-    # shared control rather than a card-like plaque in its own right.
+    # shared control rather than a card-like plaque in its own right. A thin
+    # rectangle (900x280), not the square canvas every other tile here
+    # uses - square was the safe default while custom_tile()'s scaleZ was a
+    # guess (see the aspect-ratio note there), but it now derives scaleZ
+    # from the real canvas aspect, so a genuinely non-square nameplate shape
+    # renders correctly rather than getting squashed onto a square footprint.
     p = os.path.join(ASSETS, "round_button.png")
-    plaque(700, 700, "NEXT ROUND", ground=(28, 14, 12), accent=CHILI_RED,
-           title_frac=0.20, minimal=True).save(p, "PNG", optimize=True)
+    plaque(900, 280, "NEXT ROUND", ground=(28, 14, 12), accent=CHILI_RED,
+           title_frac=0.5, minimal=True).save(p, "PNG", optimize=True)
     out["button"] = p
 
     p = os.path.join(ASSETS, "new_game_button.png")
     # Same plaque language as Next Round, deliberately duller (a colder
     # accent) - the two sit right next to each other as one shared control,
     # and shouldn't compete for the eye the way two equally hot reds would.
-    plaque(700, 700, "NEW GAME", ground=(18, 20, 24), accent=(120, 150, 200),
-           title_frac=0.20, minimal=True).save(p, "PNG", optimize=True)
+    plaque(900, 280, "NEW GAME", ground=(18, 20, 24), accent=(120, 150, 200),
+           title_frac=0.5, minimal=True).save(p, "PNG", optimize=True)
     out["newgame"] = p
 
     p = os.path.join(ASSETS, "dealer.png")
