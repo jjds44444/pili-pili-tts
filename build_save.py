@@ -121,12 +121,13 @@ POS_DISCARD = (-8.0, 1.6, 3.0)     # face up - see gather()'s rotation in global
 POS_ASIDE = (8.0, 1.6, 3.0)
 POS_PILIS = (-3.2, 1.6, -6.5)      # Pili token supply bag
 POS_TRICKBAG = (3.2, 1.6, -6.5)    # trick token supply bag
-# Next Round/Reset between the centre and the bags - "in front of" them, as
-# requested. STACKED, not side by side: they're wide nameplates now (a
-# 900x280 image, so ~3.2x wider than deep at a given scale), and two of
-# those side by side need more width than the middle of the table has.
-POS_BUTTON = (0.0, 1.3, -2.6)
-POS_NEWGAME = (0.0, 1.3, -4.3)
+# Next Round/Reset side by side, in front of the bags. NOT stacked: stacking
+# them puts one further in toward the middle, and the whole point of keeping
+# them out here is that the centre of the table is where cards get played.
+# Side by side spends tangential space instead of radial, so the pair stays
+# one band's worth of depth no matter how many controls end up here.
+POS_BUTTON = (-2.0, 1.3, -4.2)
+POS_NEWGAME = (2.0, 1.3, -4.2)
 POS_MTOGGLE = (7.0, 1.3, 5.2)      # by the mission deck, since that is what it toggles
 
 _used_guids = set()
@@ -304,15 +305,24 @@ def scripting_zone(pos, rot_y, gm_notes, size=(3.4, 3.0, 3.4)):
 
 
 def rulebook_pdf(pdf_url, pos, rot_y=0.0):
-    """The real rulebook, propped up like a book - schema verified against 51
-    real Custom_PDF objects across 28 workshop mods (field names, nesting,
-    and the 45-degree lean are all copied from working examples, not
-    guessed)."""
+    """The real rulebook, lying flat on the felt.
+
+    Schema verified against 51 real Custom_PDF objects across 28 workshop
+    mods. It used to lean at rotX=45, copied from working examples - but only
+    half-copied: **every** real leaning PDF (7 of them) also sits at
+    posY 4.0-4.46, well clear of the table, while the flat ones (20+) sit at
+    posY 0.96-1.7. Ours took the 45-degree lean and kept a flat object's
+    height, so the lower half of the page was underneath the table surface
+    and got clipped - the page turned fine and popped out fine, it was just
+    sunken. Flat at a flat object's height can't have that problem at all,
+    and on a table this small a full-size book propped up at head height
+    would dominate the middle anyway. All 51 use scaleX == scaleZ.
+    """
     return dict(BASE_FLAGS, **{
         "GUID": guid(), "Name": "Custom_PDF",
         "Transform": {
             "posX": pos[0], "posY": pos[1], "posZ": pos[2],
-            "rotX": 45.0, "rotY": rot_y, "rotZ": 0.0,
+            "rotX": 0.0, "rotY": rot_y, "rotZ": 0.0,
             "scaleX": 2.2, "scaleY": 1.0, "scaleZ": 2.2,
         },
         "Nickname": "Pili Pili Rulebook", "Description":
@@ -568,21 +578,19 @@ def build(missions, urls, out_dir):
     # check, not the 2D picture" lesson as the rest of this table's layout.
     # face_centre() still works out which way is "into the table" from
     # wherever it actually sits.
-    RULEBOOK_POS = (-7.89, 1.3, -17.72)
+    RULEBOOK_POS = (-7.89, 1.3, -17.72)   # flat, see rulebook_pdf()
     objects.append(rulebook_pdf(urls["rulebook"], RULEBOOK_POS,
                                 rot_y=face_centre(RULEBOOK_POS[0], RULEBOOK_POS[2])))
 
-    # snap points for played cards, ringed tightly around the middle
+    # No snap points anywhere near the middle. There used to be a ring of six
+    # around PLAY_CENTRE for played cards, plus one dead centre at
+    # POS_REVEAL - which is exactly where people actually throw cards, so all
+    # it did was drag them into fixed slots. Snap points here are entirely
+    # ours to choose (nothing about the table forces them), so the middle is
+    # simply left free. The two kept below are both well off-centre and only
+    # help tidy the piles the script itself uses.
     snaps = []
-    for i in range(len(SEATS)):
-        th = math.radians(360.0 * i / len(SEATS))
-        snaps.append({
-            "Position": {"x": PLAY_CENTRE[0] + 6.0 * math.sin(th), "y": 1.02,
-                         "z": PLAY_CENTRE[1] + 6.0 * math.cos(th)},
-            "Rotation": {"x": 0.0, "y": 180.0, "z": 0.0},
-            "Tags": [],
-        })
-    for spot in (POS_REVEAL, POS_ASIDE, POS_DISCARD):
+    for spot in (POS_ASIDE, POS_DISCARD):
         snaps.append({"Position": {"x": spot[0], "y": 1.02, "z": spot[2]},
                       "Rotation": {"x": 0.0, "y": 0.0, "z": 0.0}, "Tags": []})
 
