@@ -150,12 +150,21 @@ def transform(pos, rot=(0, 180, 0), scale=1.0):
     }
 
 
+# HideWhenFaceDown is FALSE here and set to True only on cards (see card()/
+# deck()). It hides a face-down object's identity behind TTS's generic "?"
+# placeholder, which is what you want for a card and nothing else - a Pili
+# token flipped over turned into a question mark, reported from a real game.
+# Every one of the 425 real Custom_Tokens checked across 28 workshop mods
+# has it False, as do all 493 Custom_Tiles, all 51 Custom_PDFs and all 45
+# Infinite_Bags; only cards ever set it True (64 of 111). With it off, TTS
+# mirrors the front onto the back by itself, so a token looks the same
+# whichever way up it lands - which is all these ones need.
 BASE_FLAGS = {
     "ColorDiffuse": {"r": 1.0, "g": 1.0, "b": 1.0},
     "Locked": False, "Grid": True, "Snap": True, "IgnoreFoW": False,
     "MeasureMovement": False, "DragSelectable": True, "Autoraise": True,
     "Sticky": True, "Tooltip": True, "GridProjection": False,
-    "HideWhenFaceDown": True, "Hands": True,
+    "HideWhenFaceDown": False, "Hands": True,
 }
 
 
@@ -172,6 +181,7 @@ def card(deck_id, index, nickname, description, gm_notes, cd, pos, rot):
         "GUID": guid(), "Name": "CardCustom",
         "Transform": transform(pos, rot),
         "Nickname": nickname, "Description": description, "GMNotes": gm_notes,
+        "HideWhenFaceDown": True,
         "CardID": deck_id * 100 + index,
         "SidewaysCard": False,
         "CustomDeck": {str(deck_id): cd},
@@ -184,6 +194,7 @@ def deck(deck_id, cards, nickname, gm_notes, cd, pos, rot=(0, 180, 180)):
         "GUID": guid(), "Name": "DeckCustom",
         "Transform": transform(pos, rot),
         "Nickname": nickname, "Description": "", "GMNotes": gm_notes,
+        "HideWhenFaceDown": True,
         "SidewaysCard": False,
         "DeckIDs": [c["CardID"] for c in cards],
         "CustomDeck": {str(deck_id): cd},
@@ -356,13 +367,15 @@ def dealer_marker(image_url, pos):
 def token_bag(image_url, pos, bag_notes, bag_nick, bag_desc,
              token_notes, token_nick, token_desc, scale=1.4):
     """An Infinite_Bag holding one prototype Custom_Token, the pattern both
-    the Pili and trick-token supplies use. Every Custom_Token in ~450 checked
-    across 28 real workshop mods leaves ImageSecondaryURL empty, Stackable or
-    not - TTS mirrors the front onto the back by itself when it is empty and
-    Stackable is false. An earlier attempt here explicitly set the same URL
-    on both sides on the theory that Stackable alone caused a blank back;
-    that was an unverified guess and the actual reported symptom (blank
-    back) suggests it was wrong."""
+    the Pili and trick-token supplies use.
+
+    ImageSecondaryURL stays empty: all 452 real Custom_Tokens checked across
+    28 workshop mods leave it empty, Stackable or not, and TTS mirrors the
+    front onto the back by itself. The reported "flipping a Pili turns it
+    into a ?" was NOT a missing back image - it was HideWhenFaceDown, which
+    this file used to set on every object indiscriminately. See BASE_FLAGS.
+    Setting a back image here would paper over that rather than fix it, and
+    would be the one thing no real mod does."""
     token = dict(BASE_FLAGS, **{
         "GUID": guid(), "Name": "Custom_Token",
         "Transform": transform((pos[0], pos[1] + 1, pos[2]), (0, 0, 0), 0.55),

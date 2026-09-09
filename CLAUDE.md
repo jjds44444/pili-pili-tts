@@ -47,7 +47,11 @@ Matched to the published cards: flat colour bands by value (blue → cyan → gr
 keyline and tribal ink marks inside the digit shapes, indices in all four
 corners, and a field of scattered glyphs in a darker tone of the card colour.
 Missions are pale with a solid ink pictogram and the deal count in a dark box
-bottom-left; backs are black with a flaming mask over crossed chillies.
+bottom-left; backs are black with a flaming mask over crossed chillies. Every
+face and back goes out through `framed()`, which adds the published cards'
+heavy black rounded border - it scales the art down into the inset rather
+than painting the frame over the top, because the corner indices sit close
+enough to the edge that painting over would clip them.
 
 `glyphs.py` is the interesting part. Silhouettes (mask, totem, figure, sun,
 chilli, hand…) and interior marks (chevrons, dot rows, zigzags, hatching, eyes,
@@ -275,14 +279,23 @@ again immediately before the next scripted `.shuffle()`/`.deal()`/
 without this pattern and it can still walk off under a strong-enough nudge,
 rail or no rail.
 
+**`HideWhenFaceDown` belongs on cards and nothing else.** It hides a
+face-down object's identity behind TTS's generic "?" placeholder - correct
+for a card, wrong for everything else. `BASE_FLAGS` used to set it `True`
+for every object this file builds, so flipping a Pili token over turned it
+into a question mark (reported from a real game). Real-mod convention is
+unanimous: all 425 `Custom_Token`s, all 493 `Custom_Tile`s, all 51
+`Custom_PDF`s and all 45 `Infinite_Bag`s checked across 28 mods have it
+`False`; only cards ever set it `True` (64 of 111). `BASE_FLAGS` now
+defaults to `False` and `card()`/`deck()` set it `True` themselves.
+
 **Every `Custom_Token`'s `ImageSecondaryURL` is empty, always, even for
-one-shot tokens with a genuinely blank back** - confirmed against ~450
+one-shot tokens with a genuinely blank back** - confirmed against all 452
 tokens across 28 real workshop mods, `Stackable` true or false. TTS mirrors
-the front onto the back itself when it is empty and `Stackable` is false. An
-earlier version of `pili_bag()` explicitly set the same URL on both sides on
-an unverified guess about why the back was blank, and that was almost
-certainly the actual bug, not the fix. Don't set `ImageSecondaryURL` on a
-`Custom_Token` unless you actually want a different back image.
+the front onto the back itself, so a token looks the same whichever way up
+it lands. Don't set `ImageSecondaryURL` on a `Custom_Token` unless you
+actually want a *different* back image - in particular, don't reach for it
+to fix a blank/"?" back, which is the `HideWhenFaceDown` problem above.
 
 **The seating order is injected into the Lua at build time**, not written in
 `global.lua` itself - `build_save.py` prepends `SEAT_ORDER = {...}` (from `SEATS`)

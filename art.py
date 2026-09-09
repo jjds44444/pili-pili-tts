@@ -194,6 +194,29 @@ def inked_text(layer, xy, text, fnt, anchor="mm", fill=(255, 255, 255),
 # faces
 # --------------------------------------------------------------------------- #
 
+def framed(card, cw, ch, frac=0.045, radius_frac=0.075):
+    """The heavy black border the real cards have.
+
+    The art is scaled down into the inset rather than the frame being painted
+    over the top of it - the corner indices sit close to the edge, and
+    painting over would clip them. A ~4.5% inset costs a sliver of size and
+    keeps everything that was drawn.
+
+    Rounded to match: TTS draws a card as a rounded rectangle, so a square
+    frame would show the felt cutting its corners off.
+    """
+    w, h = card.size
+    b = int(min(w, h) * frac)
+    inner = card.resize((w - 2 * b, h - 2 * b), Image.LANCZOS)
+    out = Image.new("RGBA", (w, h), INK + (255,))
+    mask = Image.new("L", inner.size, 0)
+    r = int(min(inner.size) * radius_frac)
+    ImageDraw.Draw(mask).rounded_rectangle(
+        [0, 0, inner.size[0] - 1, inner.size[1] - 1], r, fill=255)
+    out.paste(inner, (b, b), mask)
+    return out.resize((cw, ch), Image.LANCZOS).convert("RGB")
+
+
 def number_card(value):
     w, h = CARD_W * SS, CARD_H * SS
     base = band_colour(value)
@@ -218,7 +241,7 @@ def number_card(value):
     card.alpha_composite(corner)
     card.alpha_composite(corner.rotate(180))
 
-    return card.resize((CARD_W, CARD_H), Image.LANCZOS).convert("RGB")
+    return framed(card, CARD_W, CARD_H)
 
 
 def joker_card():
@@ -245,7 +268,7 @@ def joker_card():
            fill=PAPER, anchor="mm")
     d.text((w // 2, int(h * 0.925)), "any value 0 - 56",
            font=font(FONT_BOLD, int(h * 0.038)), fill=(196, 190, 182), anchor="mm")
-    return card.resize((CARD_W, CARD_H), Image.LANCZOS).convert("RGB")
+    return framed(card, CARD_W, CARD_H)
 
 
 # which pictogram depicts which effect
@@ -314,7 +337,7 @@ def mission_card(title, body, cards, expert=False):
     if expert:
         d.rectangle([0, 0, w - 1, h - 1], outline=CHILI_RED, width=int(w * 0.022))
 
-    return card.resize((CARD_W, CARD_H), Image.LANCZOS).convert("RGB")
+    return framed(card, CARD_W, CARD_H)
 
 
 def plaque(cw, ch, title, ground=(20, 18, 18), accent=(232, 196, 92),
@@ -457,7 +480,7 @@ def back(cw, ch, label, tint, sub=None):
     if sub:
         d.text((w // 2, int(h * 0.925)), sub, font=font(FONT_BOLD, int(h * 0.042)),
                fill=tint, anchor="mm")
-    return card.resize((cw, ch), Image.LANCZOS).convert("RGB")
+    return framed(card, cw, ch)
 
 
 def pili_token():
