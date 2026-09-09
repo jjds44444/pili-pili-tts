@@ -269,7 +269,7 @@ so a physics nudge from anything nearby could walk it right off the felt.
 Every table used since (the rectangle, now the circle) is railed on every
 edge, so that specific failure mode shouldn't recur, but `lockAtRest()`/
 `unlockForOps()` in `global.lua` still pin every shared pile (play deck,
-leftover "aside" pile, mission deck, discard) once it settles, and unlock it
+mission deck, discard) once it settles, and unlock it
 again immediately before the next scripted `.shuffle()`/`.deal()`/
 `.takeObject()` call, as a second line of defence. Add a new shared pile
 without this pattern and it can still walk off under a strong-enough nudge,

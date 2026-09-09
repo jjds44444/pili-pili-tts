@@ -29,7 +29,7 @@ TAG_NEWGAME = "PILI:NEWGAME"
 TAG_DEALER = "PILI:DEALER"
 TAG_MTOGGLE = "PILI:MTOGGLE"
 
--- POS_PLAY, POS_ASIDE, POS_MISSION, POS_REVEAL and POS_DISCARD are injected
+-- POS_PLAY, POS_MISSION, POS_REVEAL and POS_DISCARD are injected
 -- above this line by build_save.py, from the same constants that place the
 -- objects in the save. Do not redeclare them here or they will drift apart.
 
@@ -656,11 +656,16 @@ function dealCards(seated, missionName, n)
     Wait.time(function()
         deck.deal(n)
         Wait.time(function()
-            -- leftovers are set aside face down, still reachable for the
-            -- missions that draw an extra card
+            -- Undealt leftovers stay put, face down, where the deck lives -
+            -- still reachable for the missions that draw an extra card.
+            -- They used to get shunted to a separate POS_ASIDE spot, which
+            -- just looked like the deck wandering off on its own after every
+            -- deal ("why does the card pile move off to the side?"). There is
+            -- no live deck left to confuse them with once the hands are out,
+            -- so the second home bought nothing.
             local rest = biggest(TAG_PLAY)
             if rest ~= nil then
-                rest.setPositionSmooth(POS_ASIDE)
+                rest.setPositionSmooth(POS_PLAY)
                 rest.setRotationSmooth({0, 180, 180})
                 Wait.time(function() lockAtRest(biggest(TAG_PLAY)) end, 1.0)
             end
