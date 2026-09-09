@@ -114,11 +114,13 @@ POS_PLAY = (-3.2, 1.6, 3.5)
 POS_DISCARD = (3.2, 1.6, 3.5)      # face up - see gather()'s rotation in global.lua
 POS_MISSION = (-6.5, 1.6, -2.0)
 POS_ASIDE = (-6.5, 1.6, 2.0)
-POS_PILIS = (6.5, 1.6, -2.0)       # Pili token supply bag
-POS_TRICKBAG = (6.5, 1.6, 2.0)     # trick token supply bag
-# Next Round and New Game share one small control cluster, off-centre.
-POS_BUTTON = (-2.2, 1.3, -4.0)
-POS_NEWGAME = (2.2, 1.3, -4.0)
+# Bags directly opposite the decks (mirrored across the centre - same x,
+# negated z), Next Round/New Game between the centre and the bags on that
+# same line - "in front of" them, requested explicitly.
+POS_PILIS = (-3.2, 1.6, -6.5)      # Pili token supply bag
+POS_TRICKBAG = (3.2, 1.6, -6.5)    # trick token supply bag
+POS_BUTTON = (-1.8, 1.3, -3.2)
+POS_NEWGAME = (1.8, 1.3, -3.2)
 POS_MTOGGLE = (-9.0, 1.3, -4.5)
 
 _used_guids = set()
@@ -485,11 +487,12 @@ def build(missions, urls, out_dir, aspects=None):
     # plain half-width, which an off-axis rotation would otherwise do.
     ctrl_rot = face_centre((POS_BUTTON[0] + POS_NEWGAME[0]) / 2,
                            (POS_BUTTON[2] + POS_NEWGAME[2]) / 2)
+    CTRL_SCALE = 1.6 * 0.8    # requested smaller - 80% of the original
     objects.append(custom_tile(urls["button"], POS_BUTTON, ctrl_rot,
-                               "Next Round", "PILI:BUTTON", scale=1.6,
+                               "Next Round", "PILI:BUTTON", scale=CTRL_SCALE,
                                aspect=aspects.get("button", 1.0)))
     objects.append(custom_tile(urls["newgame"], POS_NEWGAME, ctrl_rot,
-                               "New Game", "PILI:NEWGAME", scale=1.6,
+                               "New Game", "PILI:NEWGAME", scale=CTRL_SCALE,
                                aspect=aspects.get("newgame", 1.0)))
     objects.append(custom_tile(urls["mtoggle"], POS_MTOGGLE,
                                face_centre(POS_MTOGGLE[0], POS_MTOGGLE[2]),

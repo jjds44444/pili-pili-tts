@@ -318,7 +318,7 @@ def mission_card(title, body, cards, expert=False):
 
 
 def plaque(cw, ch, title, ground=(20, 18, 18), accent=(232, 196, 92),
-           chilli=False, title_frac=0.30, title_y=0.5):
+           chilli=False, title_frac=0.30, title_y=0.5, minimal=False):
     """Dark tile used for the in-world control objects: dibbers, round button.
 
     `title=None` skips the baked title entirely - for a tile whose meaning is
@@ -327,17 +327,22 @@ def plaque(cw, ch, title, ground=(20, 18, 18), accent=(232, 196, 92),
     gives the two something to visually collide with. `title_y` moves the
     title off-centre (as a fraction of height) for tiles where a button DOES
     still need the centre - see mission_toggle, whose title used to sit right
-    under its own on/off button.
+    under its own on/off button. `minimal` drops the background glyph texture
+    and thins the border right down - "just the text" for a tile meant to
+    read as a plain label (Next Round/New Game) rather than a card-like
+    plaque with its own texture and presence.
     """
     w, h = cw * SS, ch * SS
     seed_text = title or "plaque"
     tile = Image.new("RGBA", (w, h), ground + (255,))
-    tile.alpha_composite(glyphs.scatter((w, h), seed=stable_hash(seed_text) % 7777,
-                                        colour=shade(ground, 2.4),
-                                        count=26, glyph_px=int(min(w, h) * 0.30)))
+    if not minimal:
+        tile.alpha_composite(glyphs.scatter((w, h), seed=stable_hash(seed_text) % 7777,
+                                            colour=shade(ground, 2.4),
+                                            count=26, glyph_px=int(min(w, h) * 0.30)))
     d = ImageDraw.Draw(tile)
+    border_w = max(2, int(min(w, h) * (.008 if minimal else .022)))
     d.rounded_rectangle([int(w * .012), int(h * .022), w - int(w * .012), h - int(h * .022)],
-                        int(min(w, h) * .09), outline=accent, width=max(3, int(min(w, h) * .022)))
+                        int(min(w, h) * .09), outline=accent, width=border_w)
 
     if chilli:
         s = int(h * 0.52)
@@ -607,18 +612,20 @@ def generate(missions, progress=True):
     plaque(600, 600, None).save(p, "PNG", optimize=True)
     out["dibber"] = p
 
+    # Requested plain: no chilli icon, no background texture, thin border -
+    # "just the text", since these two sit close together as one small
+    # shared control rather than a card-like plaque in its own right.
     p = os.path.join(ASSETS, "round_button.png")
     plaque(700, 700, "NEXT ROUND", ground=(28, 14, 12), accent=CHILI_RED,
-           chilli=True, title_frac=0.15).save(p, "PNG", optimize=True)
+           title_frac=0.20, minimal=True).save(p, "PNG", optimize=True)
     out["button"] = p
 
     p = os.path.join(ASSETS, "new_game_button.png")
-    # Same plaque language as Next Round, deliberately duller (no chilli,
-    # a colder accent) - the two sit right next to each other as one shared
-    # control, and shouldn't compete for the eye the way two equally hot
-    # reds would.
+    # Same plaque language as Next Round, deliberately duller (a colder
+    # accent) - the two sit right next to each other as one shared control,
+    # and shouldn't compete for the eye the way two equally hot reds would.
     plaque(700, 700, "NEW GAME", ground=(18, 20, 24), accent=(120, 150, 200),
-           title_frac=0.16).save(p, "PNG", optimize=True)
+           title_frac=0.20, minimal=True).save(p, "PNG", optimize=True)
     out["newgame"] = p
 
     p = os.path.join(ASSETS, "dealer.png")
