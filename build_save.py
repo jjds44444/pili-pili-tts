@@ -93,10 +93,16 @@ HAND_W, HAND_D = 11.7, 6.8
 # a rotated footprint is genuinely wrong, not just imprecise. Re-run that
 # kind of search (not the axis-aligned kind) over layout_preview.py's own
 # corners()/polys_overlap() if any of SEATS, HAND_W/HAND_D, or these scales
-# change.
-OUT_CTRL = 6.8      # dibber, and the dump zone's own "forward" distance
-SIDE_DUMP = 4.6     # dump zone, sideways from the dibber
-DUMP_HALF = 3.3     # dump zone half-size (must match the scripting_zone size below)
+# change. Reported after a real load: still not close enough to the edge -
+# re-run with a smaller required margin (1.5, was 2.0) and it turns out
+# OUT_CTRL and DUMP_HALF trade directly against each other at this radius
+# (a smaller, still-real search found the exact tradeoff curve: shrinking
+# DUMP_HALF by roughly 1 unit buys roughly 1.5 units of extra closeness to
+# the rim) - these values move the dump zone about 0.8 units closer to the
+# rim than the previous pass, trading some of its size for that.
+OUT_CTRL = 6.0      # dibber, and the dump zone's own "forward" distance
+SIDE_DUMP = 3.8     # dump zone, sideways from the dibber
+DUMP_HALF = 2.5     # dump zone half-size (must match the scripting_zone size below)
 
 # Shared piles and controls, in the open middle a circular table gives for
 # free (unlike the rectangle, which had to earn this space back from two
@@ -448,10 +454,20 @@ def build(missions, urls, out_dir, aspects=None):
                                    f"{colour} bid", f"PILI:DIBBER:{colour}",
                                    scale=1.1, aspect=aspects.get("dibber", 1.0)))
 
+        # Reported bug: the tile and its zone used to share one GMNotes tag
+        # ("there's only one functional zone, a second tag has no purpose" -
+        # true, but one() (tagged(tag, true)[1]) doesn't guarantee which of
+        # the two same-tagged objects it hands back. It returned the plain
+        # Custom_Tile at the table, which has no getObjects() - "Attempting
+        # to call getObjects() on an object that does not support
+        # getObjects()", crashing sweepAndDeal(). The tile now carries its
+        # own separate, script-unused tag (PILI:DUMPTILE) - back to the old
+        # mat/tray-vs-tricks/pilis split this replaced, for exactly the
+        # reason that split existed.
         dx, dz = seat_spot(sx, sz, rot_y, OUT_CTRL, SIDE_DUMP)
         objects.append(custom_tile(urls["dump"], (dx, 1.2, dz), rot_y,
-                                   f"{colour} dump", f"PILI:DUMP:{colour}",
-                                   scale=2.4, aspect=aspects.get("dump", 1.0)))
+                                   f"{colour} dump", f"PILI:DUMPTILE:{colour}",
+                                   scale=2.0, aspect=aspects.get("dump", 1.0)))
         objects.append(scripting_zone((dx, 2.2, dz), rot_y,
                                       f"PILI:DUMP:{colour}",
                                       size=(DUMP_HALF * 2, 4.0, DUMP_HALF * 2)))
@@ -523,11 +539,22 @@ def build(missions, urls, out_dir, aspects=None):
         "Won a trick? Drag one into your own dump zone. Cleared away "
         "automatically at the next deal.",
         "PILI:TRICKTOKEN", "Trick", "One of these = one trick won this round."))
-    # Sits near POS_MTOGGLE rather than on the centreline, same reasoning as
-    # that tile - face_centre() works out which way is "into the table" from
+    # Reported after a real load: too far forward (toward the centre) -
+    # moved out toward the felt edge as asked. Hand-picking a gap between
+    # two dump zones by angle alone kept clipping something else nearby
+    # (the dealer marker, which sits close to Red but not centred on it -
+    # see passDealer() - then a HandTrigger, much wider than any dump zone,
+    # then a second HandTrigger) each time a new spot looked clear by eye.
+    # This one instead comes from an actual search over every real
+    # footprint already in the build (find_rulebook_spot.py, not kept in
+    # the repo - reuses layout_preview.py's own corners()/polys_overlap())
+    # for the largest radius that clears everything, same "trust the real
+    # check, not the 2D picture" lesson as the rest of this table's layout.
+    # face_centre() still works out which way is "into the table" from
     # wherever it actually sits.
-    objects.append(rulebook_pdf(urls["rulebook"], (-4.0, 1.3, -9.5),
-                                rot_y=face_centre(-4.0, -9.5)))
+    RULEBOOK_POS = (-7.89, 1.3, -17.72)
+    objects.append(rulebook_pdf(urls["rulebook"], RULEBOOK_POS,
+                                rot_y=face_centre(RULEBOOK_POS[0], RULEBOOK_POS[2])))
 
     # snap points for played cards, ringed tightly around the middle
     snaps = []

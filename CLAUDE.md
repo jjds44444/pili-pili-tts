@@ -184,16 +184,27 @@ slots holding exactly 56 cards; missions are 6×6 = 36. Adding a mission past 36
 overflows the sheet — bump the grid in `art.generate()` and the `custom_deck(...)`
 call in `build_save.py` together, or cards silently render as the wrong face.
 
-**The Lua finds everything by GMNotes, not GUID or Nickname.** Decks get merged
-and re-created constantly during play, so GUIDs are worthless. Every tagged object
-carries a `PILI:` prefix - `PILI:PLAY`/`PILI:MISSION` on cards and decks,
-`PILI:DIBBER:<colour>`/`PILI:DUMP:<colour>` per seat, plus `PILI:BUTTON`,
+**The Lua finds everything by GMNotes, not GUID or Nickname** - and **`one(tag)`
+promises nothing about *which* same-tagged object it returns if there's more
+than one.** Decks get merged and re-created constantly during play, so GUIDs
+are worthless. Every tagged object carries a `PILI:` prefix -
+`PILI:PLAY`/`PILI:MISSION` on cards and decks, `PILI:DIBBER:<colour>`/
+`PILI:DUMP:<colour>`/`PILI:DUMPTILE:<colour>` per seat, plus `PILI:BUTTON`,
 `PILI:NEWGAME`, `PILI:DEALER`, `PILI:BAG`, `PILI:TRICKBAG`, `PILI:MTOGGLE`.
-`PILI:DUMP:<colour>` deliberately tags *two* objects per seat (the dump
-zone's backdrop tile and its `ScriptingTrigger`) - there's only one
-functional zone for the script to find there, unlike the old separate mat/
-tray + tricks/pilis split, so a second bookkeeping-only tag would have no
-purpose; `validate.py` checks for exactly 2, not 1, on that one tag.
+**`PILI:DUMP` and `PILI:DUMPTILE` used to be one shared tag** on the theory
+that only the `ScriptingTrigger` was ever functionally needed, so a second
+bookkeeping-only tag on the backdrop tile would have no purpose - true, but
+`one(TAG_DUMP .. colour)` (`tagged(tag, true)[1]`) doesn't guarantee it
+returns the zone rather than the tile, and in a real load it returned the
+tile: `getObjects()` doesn't exist on a plain `Custom_Tile`, so
+`sweepAndDeal()` crashed with "attempting to call getObjects() on an object
+that does not support getObjects()" the first time a seat's dump tile won
+that race. Split back into two tags - `PILI:DUMP` is the zone the script
+actually queries, `PILI:DUMPTILE` is the backdrop's own separate,
+script-unused tag - the same mat/tray-vs-tricks/pilis split the rectangle
+table used, and for the same reason. **Any tag two objects can legitimately
+share is a bug waiting for `one()` to pick the wrong one** - give the object
+the script actually needs to find a tag nothing else on the table carries.
 `gather()` re-stamps the play/mission tag after merging a pile back together.
 `validate.py`'s "in-world controls" section checks every seat has its full
 set - keep that invariant or the round button silently stops finding a
@@ -326,26 +337,30 @@ missions-toggle plaques facing away from the table instead of into it. Both
 fixed on the rectangle; neither claim survives the table switch below, since
 the objects and their placement logic changed again.
 
-**`Table_Circular` - the current table - has not been loaded in TTS at all
-yet.** Everything about it is checked with `validate.py` and
-`layout_preview.py` only: the save is structurally valid, and every
-footprint (rotated, per the SAT check `layout_preview.py` now does) clears
-the felt, every other footprint, and every hand zone with margin. Not
-confirmed by an actual load: whether `FELT_R` (inferred, not independently
-measured - see the caveat under "Table layout") matches the real in-game
-boundary, whether hand zones actually catch a dealt hand on this table,
-which seat colour physically lands at which of the six positions, and
-whether the two objects nearest the felt edge by design (`PILI:DUMP` zones,
-placed "closer to the edge" on request) hold up against a boundary that
-might turn out tighter than `FELT_R` assumes.
+**`Table_Circular` - the current table - has been loaded in TTS once.** That
+load found the real `one()`/shared-tag bug described above (`PILI:DUMP` vs
+`PILI:DUMPTILE`) and two placement complaints (dibber/dump zones not close
+enough to the edge, the rulebook too far toward the centre), all since fixed
+and re-checked with `layout_preview.py` but **not re-loaded into TTS to
+confirm the fixes actually work there** - see the note this replaces two
+paragraphs up for exactly this pattern happening before (rectangle table,
+two bugs fixed after one brief load, "neither claim survives" once the table
+changed again - same caution applies here: a `layout_preview.py` pass is not
+the same thing as a TTS load). Still not confirmed even by that one load:
+whether `FELT_R` (inferred, not independently measured - see the caveat
+under "Table layout") matches the real in-game boundary, whether hand zones
+actually catch a dealt hand on this table, and which seat colour physically
+lands at which of the six positions.
 
-**The token-based trick/Pili scoring and the manual New Game reset are new
-code, not yet run in TTS at all - not even a load-only check.** Specifically
-unconfirmed: `trickCount()`/`piliCount()` actually counting the right
-objects out of a shared `PILI:DUMP` zone now that two different GMNotes
-values live in one place, `sweepAndDeal()`'s trick-token cleanup not also
-catching Pilis it shouldn't touch, and `newGame()`'s `.destruct()` loop
-actually clearing every seat rather than silently missing one.
+**The token-based trick/Pili scoring and the manual New Game reset have not
+been exercised in TTS at all - the one real load crashed on `nextRound()`
+before any of that logic ran** (the `one()` bug above). Specifically
+unconfirmed, now that `PILI:DUMP` and `PILI:DUMPTILE` are split back apart:
+`trickCount()`/`piliCount()` actually counting the right objects out of the
+zone now that `one()` has only one candidate to return, `sweepAndDeal()`'s
+trick-token cleanup not also catching Pilis it shouldn't touch, and
+`newGame()`'s `.destruct()` loop actually clearing every seat rather than
+silently missing one.
 
 Still not confirmed even before any of this: a full round end-to-end
 (bidding through scoring through someone actually pressing New Game), the

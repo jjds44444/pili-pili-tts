@@ -153,11 +153,14 @@ for o in save["ObjectStates"]:
 
 for seat in seats:
     check(f"  PILI:DIBBER:{seat}", notes.get("PILI:DIBBER:" + seat) == 1)
-    # the dump zone's backdrop tile and its ScriptingTrigger deliberately
-    # share one tag - unlike the old separate mat/tray + tricks/pilis tags,
-    # there's only one functional zone here for the script to find, so a
-    # second bookkeeping-only tag would have no purpose.
-    check(f"  PILI:DUMP:{seat} (tile + zone)", notes.get("PILI:DUMP:" + seat) == 2)
+    # PILI:DUMP is the zone the script actually queries (one() must return
+    # it unambiguously); PILI:DUMPTILE is the backdrop tile's own, separate,
+    # script-unused tag. They used to share one tag on the theory that only
+    # one of them was ever functionally needed - true, but one() can't
+    # promise which of two same-tagged objects it hands back, and it handed
+    # back the tile (no getObjects()) in real play, crashing sweepAndDeal().
+    check(f"  PILI:DUMP:{seat}", notes.get("PILI:DUMP:" + seat) == 1)
+    check(f"  PILI:DUMPTILE:{seat}", notes.get("PILI:DUMPTILE:" + seat) == 1)
 for single in ("PILI:BUTTON", "PILI:NEWGAME", "PILI:DEALER", "PILI:BAG",
               "PILI:TRICKBAG", "PILI:MTOGGLE"):
     check(f"  exactly one {single}", notes.get(single) == 1)
