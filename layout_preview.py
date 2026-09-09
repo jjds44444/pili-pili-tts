@@ -43,23 +43,31 @@ ASSETS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "assets")
 _aspect_cache = {}
 
 
-def image_aspect(obj):
-    """height/width of a tile's own art, from the real PNG in assets/.
+def image_shape(obj):
+    """(width, height) multipliers for a tile, from its real art in assets/.
 
-    Falls back to 1.0 (square) if the file isn't there - a save built with
-    --out elsewhere still checks, just with a square assumption for anything
-    whose art can't be found locally.
+    TTS sizes a Custom_Tile so its SHORT side follows the scale and the long
+    side extends with the image's aspect ratio - a 900x280 image at scale s
+    is s*3.21 wide and s deep, not s x s. Confirmed the hard way: the first
+    build after fixing the double-aspect bug used the old square-tile scale
+    and came out enormous, ~3.2x wider than intended.
+
+    Falls back to square if the art isn't found locally, so a save built with
+    --out elsewhere still checks (just with a square assumption).
     """
     url = obj.get("CustomImage", {}).get("ImageURL", "")
     name = os.path.basename(url.split("?")[0])
     if name not in _aspect_cache:
-        path = os.path.join(ASSETS, name)
+        shape = (1.0, 1.0)
         try:
             from PIL import Image as _I
-            with _I.open(path) as im:
-                _aspect_cache[name] = im.height / im.width
+            with _I.open(os.path.join(ASSETS, name)) as im:
+                w, h = im.size
+                short = min(w, h)
+                shape = (w / short, h / short)
         except Exception:
-            _aspect_cache[name] = 1.0
+            pass
+        _aspect_cache[name] = shape
     return _aspect_cache[name]
 
 
@@ -147,7 +155,8 @@ def main(save_path, out_path):
             # has to come from the actual PNG or this check silently models
             # the wrong shape.
             ex, ez = sx * 1.15, sz * 1.15      # tile art is roughly 2.3 units
-            ez *= image_aspect(o)
+            wmul, hmul = image_shape(o)
+            ex, ez = ex * wmul, ez * hmul
         elif kind == "deck":
             ex, ez = 1.2, 1.7
         else:

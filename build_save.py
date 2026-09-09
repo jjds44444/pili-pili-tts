@@ -121,10 +121,12 @@ POS_DISCARD = (-8.0, 1.6, 3.0)     # face up - see gather()'s rotation in global
 POS_ASIDE = (8.0, 1.6, 3.0)
 POS_PILIS = (-3.2, 1.6, -6.5)      # Pili token supply bag
 POS_TRICKBAG = (3.2, 1.6, -6.5)    # trick token supply bag
-# Next Round/Reset between the centre and the bags on that same line - "in
-# front of" them, also requested explicitly.
-POS_BUTTON = (-1.8, 1.3, -3.2)
-POS_NEWGAME = (1.8, 1.3, -3.2)
+# Next Round/Reset between the centre and the bags - "in front of" them, as
+# requested. STACKED, not side by side: they're wide nameplates now (a
+# 900x280 image, so ~3.2x wider than deep at a given scale), and two of
+# those side by side need more width than the middle of the table has.
+POS_BUTTON = (0.0, 1.3, -2.6)
+POS_NEWGAME = (0.0, 1.3, -4.3)
 POS_MTOGGLE = (7.0, 1.3, 5.2)      # by the mission deck, since that is what it toggles
 
 _used_guids = set()
@@ -497,7 +499,11 @@ def build(missions, urls, out_dir):
     # plain half-width, which an off-axis rotation would otherwise do.
     ctrl_rot = face_centre((POS_BUTTON[0] + POS_NEWGAME[0]) / 2,
                            (POS_BUTTON[2] + POS_NEWGAME[2]) / 2)
-    CTRL_SCALE = 1.6 * 0.8    # requested smaller - 80% of the original
+    # A tile's SHORT side follows the scale, its long side extends with the
+    # image's aspect (see custom_tile()), so a 900x280 nameplate at the old
+    # square-tile scale of 1.28 came out ~3.2x too wide - "they're now
+    # massive". This is sized off the long side instead: ~3.3 units wide.
+    CTRL_SCALE = 0.45
     objects.append(custom_tile(urls["button"], POS_BUTTON, ctrl_rot,
                                "Next Round", "PILI:BUTTON", scale=CTRL_SCALE))
     objects.append(custom_tile(urls["newgame"], POS_NEWGAME, ctrl_rot,
