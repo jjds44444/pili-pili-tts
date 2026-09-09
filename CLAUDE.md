@@ -158,14 +158,31 @@ than an axis-aligned check would predict - this is exactly the kind of thing
 the rotated-footprint search above exists to catch, and is a good worked
 example of why the axis-aligned approximation isn't safe here).
 
-**`custom_tile()` derives `scaleZ` from the source image's real aspect ratio**
-(read from the actual PNG file, via `aspects` computed in `main()`) rather than
-taking one `scale` value for both axes. TTS's `CustomTile.Type: 3` (Rectangle)
-takes `scaleX`/`scaleZ` completely literally and does not infer them from the
-image - passing the same value for both, which an earlier version of this file
-did, squashes any non-square plaque onto a square footprint. Any new
-plaque-based tile needs its real aspect ratio passed through the same way,
-not a hand-picked `scale`.
+**Every real `Custom_Tile` on this table is square, on purpose, and stays
+that way.** `custom_tile()` *can* derive `scaleZ` from a source image's real
+aspect ratio (read from the actual PNG, via `aspects` computed in `main()`)
+rather than one `scale` for both axes - the mechanism exists and is
+documented as the fix for an early bug where a non-square plaque got
+squashed onto a square footprint. **Don't trust it for a genuinely
+non-square canvas.** It has now failed in real, verified TTS play three
+separate times (the two `art.py`'s own "square canvases throughout" comment
+already documents, plus a third here: Next Round/New Game built at 900x280,
+scaleZ derived correctly to match, still came out visibly squished in play).
+A check across 28 real workshop mods found no correlation at all between a
+`Custom_Tile`'s own scale ratio and its source image's aspect ratio, and
+~95% of real `Custom_Tile`s are square regardless of what's drawn on them -
+that's not a coincidence, it's every other mod author hitting the same wall
+and giving up on it too. **There is no known reliable way to get a
+genuinely non-square `Custom_Tile` footprint in this engine.** For a tile
+that needs to *look* rectangular, `nameplate()` in `art.py` bakes that look
+onto a square canvas instead (a thin bar centred in a same-coloured square,
+so the tile's real silhouette stays square but nothing draws attention to
+the rest of it) - the tile's true footprint is still the full square, this
+only changes what's visibly drawn on it. If a real non-square footprint is
+ever needed, look at `CardCustom` instead (this project's own numbered/
+mission cards already render a genuine 400x560 non-square rectangle
+correctly - cards are a different object type from `Custom_Tile` in TTS and
+don't share this problem) rather than trying `Custom_Tile` a fourth time.
 
 **Check any layout change** with `python layout_preview.py <path/to/PiliPili.json>`
 before loading it in TTS - it draws every object at its real, *rotated*
@@ -337,29 +354,36 @@ missions-toggle plaques facing away from the table instead of into it. Both
 fixed on the rectangle; neither claim survives the table switch below, since
 the objects and their placement logic changed again.
 
-**`Table_Circular` - the current table - has been loaded in TTS once.** That
-load found the real `one()`/shared-tag bug described above (`PILI:DUMP` vs
-`PILI:DUMPTILE`) and two placement complaints (dibber/dump zones not close
-enough to the edge, the rulebook too far toward the centre), all since fixed
-and re-checked with `layout_preview.py` but **not re-loaded into TTS to
-confirm the fixes actually work there** - see the note this replaces two
-paragraphs up for exactly this pattern happening before (rectangle table,
-two bugs fixed after one brief load, "neither claim survives" once the table
-changed again - same caution applies here: a `layout_preview.py` pass is not
-the same thing as a TTS load). Still not confirmed even by that one load:
-whether `FELT_R` (inferred, not independently measured - see the caveat
-under "Table layout") matches the real in-game boundary, whether hand zones
-actually catch a dealt hand on this table, and which seat colour physically
-lands at which of the six positions.
+**`Table_Circular` - the current table - has been loaded in TTS at least
+twice now.** The first load found the real `one()`/shared-tag bug described
+above (`PILI:DUMP` vs `PILI:DUMPTILE`, crashing `nextRound()` outright) and
+two placement complaints (dibber/dump zones not close enough to the edge,
+the rulebook too far toward the centre). A second load, after fixing all
+three, confirmed the crash is genuinely gone - `nextRound()`/`newGame()` ran
+far enough to show both buttons and Next Round actually executing - but
+turned up a fresh, real bug of its own: `Custom_Tile` squishing a non-square
+canvas in play (see "Every real Custom_Tile is square" above), now fixed by
+going back to a square tile with the rectangle look painted on
+(`nameplate()`). **That specific fix has not been re-loaded into TTS to
+confirm it looks right there** - see the note two paragraphs up for exactly
+this pattern happening before (rectangle table, bugs fixed after one brief
+load, "neither claim survives" once the table changed again; same caution
+applies to any single fix here until the *next* load confirms it). Still not
+confirmed even by the two loads so far: whether `FELT_R` (inferred, not
+independently measured - see the caveat under "Table layout") matches the
+real in-game boundary, whether hand zones actually catch a dealt hand on
+this table, and which seat colour physically lands at which of the six
+positions.
 
-**The token-based trick/Pili scoring and the manual New Game reset have not
-been exercised in TTS at all - the one real load crashed on `nextRound()`
-before any of that logic ran** (the `one()` bug above). Specifically
-unconfirmed, now that `PILI:DUMP` and `PILI:DUMPTILE` are split back apart:
-`trickCount()`/`piliCount()` actually counting the right objects out of the
-zone now that `one()` has only one candidate to return, `sweepAndDeal()`'s
-trick-token cleanup not also catching Pilis it shouldn't touch, and
-`newGame()`'s `.destruct()` loop actually clearing every seat rather than
+**The token-based trick/Pili scoring and the manual New Game reset have been
+loaded but not actually played** - the crash-fixed second load got as far as
+rendering both buttons correctly-functioning-looking, but nobody has
+actually run a bid/trick/score cycle through them yet. Specifically
+unconfirmed: `trickCount()`/`piliCount()` actually counting the right
+objects out of the zone now that `one()` has only one candidate to return,
+`sweepAndDeal()`'s trick-token cleanup not also catching Pilis it shouldn't
+touch, and `newGame()`'s `.destruct()` loop actually clearing every seat
+rather than
 silently missing one.
 
 Still not confirmed even before any of this: a full round end-to-end

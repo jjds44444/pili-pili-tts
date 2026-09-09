@@ -366,6 +366,34 @@ def plaque(cw, ch, title, ground=(20, 18, 18), accent=(232, 196, 92),
     return tile.resize((cw, ch), Image.LANCZOS).convert("RGB")
 
 
+def nameplate(size, title, ground, accent, bar_frac=0.30):
+    """A thin rectangular label, baked onto a square canvas rather than a
+    genuinely non-square one.
+
+    Custom_Tile's scaleX/scaleZ don't reliably reproduce a non-square source
+    image's real aspect ratio in actual play - confirmed a third time here
+    (round_button.png/new_game_button.png built at 900x280, came out visibly
+    squished in a real TTS load) after two earlier, separate attempts at
+    exactly this already failed the same way (see the "square canvases
+    throughout, deliberately" note above) - real workshop-mod data backs
+    this up too: no correlation between a Custom_Tile's own scale ratio and
+    its source image's aspect ratio across 28 real mods checked, and ~95% of
+    real Custom_Tiles are square regardless of what's drawn on them. There
+    is no known reliable formula for this object type; square is the only
+    approach that has actually held up in real play, here or in any
+    reference mod found. So: draw the thin rectangle look at `bar_frac` of
+    the square canvas's height, filled with the surrounding `ground` colour
+    (no visible seam at the bar's edge) rather than trying to make the tile
+    itself non-square again.
+    """
+    bar_h = int(size * bar_frac)
+    bar = plaque(size, bar_h, title, ground=ground, accent=accent,
+                title_frac=0.5, minimal=True)
+    canvas = Image.new("RGB", (size, size), ground)
+    canvas.paste(bar, (0, (size - bar_h) // 2))
+    return canvas
+
+
 def dealer_token():
     s = 512
     img = Image.new("RGBA", (s, s), (0, 0, 0, 0))
@@ -614,23 +642,22 @@ def generate(missions, progress=True):
 
     # Requested plain: no chilli icon, no background texture, thin border -
     # "just the text", since these two sit close together as one small
-    # shared control rather than a card-like plaque in its own right. A thin
-    # rectangle (900x280), not the square canvas every other tile here
-    # uses - square was the safe default while custom_tile()'s scaleZ was a
-    # guess (see the aspect-ratio note there), but it now derives scaleZ
-    # from the real canvas aspect, so a genuinely non-square nameplate shape
-    # renders correctly rather than getting squashed onto a square footprint.
+    # shared control rather than a card-like plaque in its own right. Square
+    # canvas (nameplate() bakes the thin rectangle *look* onto it) - a
+    # genuinely non-square canvas was tried here first and came out visibly
+    # squished in real play, the third time this project has hit that
+    # specific failure; see nameplate()'s own docstring.
     p = os.path.join(ASSETS, "round_button.png")
-    plaque(900, 280, "NEXT ROUND", ground=(28, 14, 12), accent=CHILI_RED,
-           title_frac=0.5, minimal=True).save(p, "PNG", optimize=True)
+    nameplate(700, "NEXT ROUND", (28, 14, 12), CHILI_RED).save(
+        p, "PNG", optimize=True)
     out["button"] = p
 
     p = os.path.join(ASSETS, "new_game_button.png")
     # Same plaque language as Next Round, deliberately duller (a colder
     # accent) - the two sit right next to each other as one shared control,
     # and shouldn't compete for the eye the way two equally hot reds would.
-    plaque(900, 280, "NEW GAME", ground=(18, 20, 24), accent=(120, 150, 200),
-           title_frac=0.5, minimal=True).save(p, "PNG", optimize=True)
+    nameplate(700, "NEW GAME", (18, 20, 24), (120, 150, 200)).save(
+        p, "PNG", optimize=True)
     out["newgame"] = p
 
     p = os.path.join(ASSETS, "dealer.png")
